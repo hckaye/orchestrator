@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;"
+  />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchestrator Sessions</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="titlebar">
+      <div class="titlebar-drag">
+        <span class="brand">Orchestrator</span>
+        <span class="subtitle">Sessions</span>
+      </div>
+      <div class="titlebar-actions">
+        <span id="live-badge" class="live-badge" title="Live process scan">—</span>
+        <button type="button" id="btn-refresh" class="btn ghost" title="再読込">↻</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-controls">
+          <input
+            id="search"
+            type="search"
+            placeholder="検索 (id / task / repo / session)"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div class="filter-row">
+            <select id="filter-status">
+              <option value="active">Active</option>
+              <option value="all">All</option>
+              <option value="running">running</option>
+              <option value="pending">pending</option>
+              <option value="awaiting">awaiting</option>
+              <option value="completed">completed</option>
+              <option value="failed">failed*</option>
+              <option value="merged">merged</option>
+              <option value="handed-off">handed-off</option>
+            </select>
+            <select id="filter-type">
+              <option value="all">All types</option>
+              <option value="devin">devin</option>
+              <option value="codex">codex</option>
+              <option value="cursor">cursor</option>
+              <option value="claude">claude</option>
+              <option value="grok">grok</option>
+            </select>
+          </div>
+          <div class="view-toggle">
+            <button type="button" class="seg active" data-view="projects" title="リポジトリ（親コンテキスト）でグループ">Projects</button>
+            <button type="button" class="seg" data-view="flat" title="フラット一覧">Workers</button>
+            <button type="button" class="seg" data-view="processes" title="起動中プロセス">Processes</button>
+          </div>
+        </div>
+        <div id="sidebar-stats" class="sidebar-stats"></div>
+        <div id="sidebar-list" class="sidebar-list"></div>
+      </aside>
+
+      <main class="main">
+        <div id="parent-bar" class="parent-bar" hidden></div>
+        <div id="tab-bar" class="tab-bar" hidden>
+          <div id="tabs" class="tabs"></div>
+        </div>
+        <div id="empty-state" class="empty-state">
+          <div class="empty-card">
+            <h1>親プロセスを選択</h1>
+            <p>
+              左の <strong>Projects</strong> でリポジトリ（親）を選ぶと、紐づく worker がタブに展開され、
+              ターミナル風ビューでリアルタイムに作業ログを追えます。
+              別の親を選ぶと、それ以外のタブはすべて閉じます。
+            </p>
+            <ul class="hint-list">
+              <li><kbd>親ヘッダをクリック</kbd> — 関連 worker をタブ展開</li>
+              <li><kbd>All terminals</kbd> — 親配下を並べてライブ表示</li>
+              <li><kbd>各タブ</kbd> — デフォルトは Terminal（ログ追従）</li>
+            </ul>
+          </div>
+        </div>
+        <div id="tab-panels" class="tab-panels"></div>
+      </main>
+    </div>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+{
+  "name": "orchestrator-desktop",
+  "version": "0.1.0",
+  "description": "Desktop UI for orchestrator worker sessions and live processes",
+  "main": "electron/main.js",
+  "type": "module",
+  "author": "hckaye",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --enable-logging",
+    "pack": "electron-builder --mac dir",
+    "dist": "electron-builder --mac",
+    "install:app": "node scripts/install-mac.js"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^35.1.2",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "dev.hckaye.orchestrator-desktop",
+    "productName": "Orchestrator",
+    "copyright": "Copyright © hckaye",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "CFBundleDisplayName": "Orchestrator",
+        "CFBundleName": "Orchestrator",
+        "NSHighResolutionCapable": true
+      }
+    },
+    "dmg": {
+      "title": "Orchestrator"
+    }
+  }
+}

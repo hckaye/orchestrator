@@ -1,0 +1,99 @@
+{
+  "root": "~/.orchestrator",
+  "integrationBranch": "integrate/${task}",
+  "baseBranch": "main",
+  "workers": {
+    "devin": {
+      "cli": "devin",
+      "defaultModel": "swe-1-7",
+      "permissionMode": "dangerous",
+      "printMode": true,
+      "extraArgs": []
+    },
+    "codex": {
+      "cli": "codex",
+      "defaultModel": "gpt-5.6-luna",
+      "defaultEffort": "xhigh",
+      "sandbox": "workspace-write",
+      "bypassApprovals": true,
+      "printMode": true,
+      "extraArgs": []
+    },
+    "cursor": {
+      "cli": "cursor-agent",
+      "defaultModel": "composer-2.5",
+      "yolo": true,
+      "trust": true,
+      "printMode": true,
+      "extraArgs": []
+    },
+    "claude": {
+      "cli": "claude",
+      "defaultModel": "claude-fable-5[1m]",
+      "defaultEffort": "low",
+      "permissionMode": "bypassPermissions",
+      "printMode": true,
+      "extraArgs": []
+    },
+    "grok": {
+      "cli": "grok",
+      "defaultModel": "grok-4.5",
+      "permissionMode": "default",
+      "alwaysApprove": true,
+      "printMode": true,
+      "extraArgs": []
+    }
+  },
+  "commander": {
+    "defaultModel": "claude-fable-5[1m]",
+    "thinkingLevel": "low"
+  },
+  "promptSuffix": "\n\n## Constraints\n- Work only inside your assigned worktree.\n- Do NOT push or create PRs. Commit locally on your branch.\n- When finished, leave a short completion note as the last message: 'DONE: <summary>'.\n- If blocked, end with 'BLOCKED: <reason>'.",
+  "resume": {
+    "rateLimitPatterns": [
+      "rate limit",
+      "rate_limit",
+      "ratelimit",
+      "too many requests",
+      "429",
+      "quota exceeded",
+      "usage limit",
+      "capacity",
+      "overloaded",
+      "resource_exhausted"
+    ],
+    "transientPatterns": [
+      "econnreset",
+      "socket hang up",
+      "503 service unavailable",
+      "502 bad gateway",
+      "504 gateway timeout",
+      "temporarily unavailable",
+      "connection reset",
+      "network error",
+      "timeout"
+    ]
+  },
+  "permissionBridge": {
+    "enabled": true,
+    "patterns": {
+      "claude": [
+        { "regex": "Do you want to allow|Allow|approve\\?", "type": "permission" },
+        { "regex": "\\?\\s*$", "type": "question" }
+      ],
+      "devin": [
+        { "regex": "Allow|approve|permit", "type": "permission" }
+      ],
+      "codex": [
+        { "regex": "approve|allow|proceed\\?", "type": "permission" }
+      ],
+      "cursor": [
+        { "regex": "Allow|approve|proceed\\?", "type": "permission" }
+      ],
+      "grok": [
+        { "regex": "Allow|approve|permission|Do you want to", "type": "permission" },
+        { "regex": "\\?\\s*$", "type": "question" }
+      ]
+    }
+  }
+}

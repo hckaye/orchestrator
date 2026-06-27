@@ -1,0 +1,9 @@
+node_modules/
+.orchestrator-runtime/
+*.log
+.DS_Store
+
+# Machine-local agent configs (permissions, etc.)
+.claude/settings.local.json
+.devin/config.local.json
+.worktrees/
