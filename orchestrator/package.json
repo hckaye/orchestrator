@@ -1,7 +1,7 @@
 {
   "name": "orchestrator",
   "version": "0.1.0",
-  "description": "Multi-CLI worker orchestration daemon (claude code commander + devin/codex/cursor/claude/grok workers)",
+  "description": "Multi-CLI worker orchestration daemon with configurable commander and devin/codex/cursor/claude/grok workers",
   "type": "module",
   "bin": { "orchestrator": "./orchestrator.js" },
   "dependencies": {

@@ -1,6 +1,6 @@
 ---
 name: orchestrator
-description: Commander-driven multi-CLI worker orchestration. You (the commander, Claude Code) dispatch implementation tasks to worker agents — Devin (default swe-1-7), Codex (default gpt-5.6-luna with xhigh effort), Cursor (default composer-2.5), Claude Code Fable 5 1M (low effort), or Grok (default grok-4.5) — each in its own git worktree, then review and merge their branches into one integration branch. Use when the user asks to "split work across agents", "have Devin/Codex/Cursor/Grok implement in parallel", "act as commander/orchestrator", or otherwise delegate implementation to other CLIs.
+description: Commander-driven multi-CLI worker orchestration. The invoking agent or session dispatches implementation tasks to worker agents — Devin (default swe-1-7), Codex (default gpt-5.6-luna with xhigh effort), Cursor (default composer-2.5), Claude Code Fable 5 1M (low effort), or Grok (default grok-4.5) — each in its own git worktree, then reviews and merges their branches into one integration branch. Use when the user asks to "split work across agents", "have Devin/Codex/Cursor/Grok implement in parallel", "act as commander/orchestrator", or otherwise delegate implementation to other CLIs.
 user-invocable: true
 ---
 
@@ -21,7 +21,7 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
    - cursor → model `composer-2.5` (this model has no effort variants)
    - claude → model `claude-fable-5[1m]`, effort `low`
    - grok → model `grok-4.5`
-   - commander (you) → model `claude-fable-5[1m]`, effort `low`
+   - commander (the invoking agent/session) → model `claude-fable-5[1m]`, effort `low`
    - integration branch template: `integrate/${task}`, base: `main`
 3. All worker CLIs (`devin`, `claude`, `codex`, `cursor-agent`, `grok`) must be installed and authenticated. Verify with `which devin claude codex cursor-agent grok`.
 
@@ -29,7 +29,7 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
 
 | Role | CLI | Default model | Effort |
 |---|---|---|---|
-| Commander | You (Claude Code) | Fable 5 1M | low |
+| Commander | Invoking agent/session | Fable 5 1M | low |
 | Worker: devin | `devin -p` | SWE 1.7 | not supported |
 | Worker: codex | `codex exec` | GPT-5.6 Luna | xhigh |
 | Worker: cursor | `cursor-agent -p` | Composer 2.5 | model has no variants |

@@ -1,8 +1,8 @@
 # orchestrator
 
-Commander-driven multi-CLI worker orchestration.
+Multi-CLI worker orchestration.
 
-A Claude Code (or Devin CLI) session acts as **commander**: it decomposes a task, dispatches implementation units to worker CLIs — Devin (default `swe-1-7`), Codex (default `gpt-5.6-luna` at xhigh), Cursor (default `composer-2.5`), Claude Code Fable 5 1M at low effort, or Grok (default `grok-4.5`) — each in its own git worktree, waits for completion, reviews diffs, sends feedback via `revise`, and merges everything into one integration branch.
+The invoking agent or session acts as **commander**: it decomposes a task, dispatches implementation units to worker CLIs — Devin (default `swe-1-7`), Codex (default `gpt-5.6-luna` at xhigh), Cursor (default `composer-2.5`), Claude Code Fable 5 1M at low effort, or Grok (default `grok-4.5`) — each in its own git worktree, waits for completion, reviews diffs, sends feedback via `revise`, and merges everything into one integration branch.
 
 This tool spawns each worker CLI directly (`devin -p`, `claude -p`, `codex exec`, `cursor-agent -p`, `grok -p`) — no daemon, no hang.
 
@@ -35,7 +35,7 @@ Requires Node.js (developed on v25) and the worker CLIs you want to use (`devin`
 | claude  | `claude`       | `claude-fable-5[1m]`| `low`                | `bypassPermissions` |
 | grok    | `grok`         | `grok-4.5`          | CLI default           | `always-approve`    |
 
-Commander (you) default: `claude-fable-5[1m]` low. Integration branch template: `integrate/${task}`, base: `main`.
+Commander default model: `claude-fable-5[1m]` at low effort. Integration branch template: `integrate/${task}`, base: `main`.
 
 Override a worker's model per-spawn with `--model` and its effort with `--effort`.
 
