@@ -1,0 +1,6 @@
+{
+  "name": "orchestrator-repository",
+  "private": true,
+  "type": "module",
+  "license": "MIT"
+}

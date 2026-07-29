@@ -2,7 +2,7 @@
 
 Electron UI for watching **orchestrator** workers, live processes, and their parent project context.
 
-## Install as a Mac app
+## Install the desktop app
 
 ```bash
 cd desktop
@@ -10,7 +10,15 @@ npm install
 npm run install:app
 ```
 
-This builds `Orchestrator.app` and installs it to `/Applications` (or `~/Applications` if needed), then launches it. After that, open it from Spotlight or Launchpad like any other app.
+The command detects the current OS, builds the app, installs it for the current user, and launches it. It installs an `.app` on macOS, a Start Menu application on Windows, or a `.desktop` launcher on Linux.
+
+To create distributable packages on the matching OS:
+
+```bash
+npm run dist:mac    # DMG and ZIP
+npm run dist:win    # NSIS installer and portable EXE
+npm run dist:linux  # AppImage, deb, and tar.gz
+```
 
 Rebuild/reinstall after code changes with the same `npm run install:app`.
 

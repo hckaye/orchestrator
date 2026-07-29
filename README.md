@@ -11,15 +11,23 @@ This tool spawns each worker CLI directly (`devin -p`, `claude -p`, `codex exec`
 ```bash
 git clone git@github.com:hckaye/orchestrator.git
 cd orchestrator
+# macOS / Linux
 ./install.sh
+# Windows PowerShell: .\\install.ps1
 ```
 
 `install.sh` is idempotent and safe to re-run. It:
 
 - copies `orchestrator/` to `~/.orchestrator/` (preserves your existing `config.json`)
 - runs `npm install` for `node-pty`
-- symlinks `~/.local/bin/orchestrator` → `~/.orchestrator/orchestrator.js`
-- installs the `orchestrator` skill to `~/.claude/skills/`, `~/.config/devin/skills/`, `~/.codex/skills/`, and `~/.grok/skills/`
+- installs an `orchestrator` command shim in `~/.local/bin/` (or `%USERPROFILE%\\.local\\bin\\` on Windows)
+- installs both skills globally with `npx skills add`, for all supported agent CLIs
+
+If you only need the skills, install them directly:
+
+```bash
+npx skills add hckaye/orchestrator --skill orchestrator --skill orchestrator-handoff --agent '*' --global --copy --full-depth --yes
+```
 
 Requires Node.js (developed on v25) and the worker CLIs you want to use (`devin`, `claude`, `codex`, `cursor-agent`, `grok`) installed and authenticated.
 
@@ -121,13 +129,15 @@ See skill `orchestrator-handoff` for the full workflow. Session memory does not 
 
 Optional Electron app to inspect worker sessions, live processes, and parent project context (sidebar + tabs).
 
-Install as a Mac app (`/Applications/Orchestrator.app`):
+Install the desktop app for the current OS:
 
 ```bash
 cd desktop
 npm install
 npm run install:app
 ```
+
+This installs and launches an app for the current user: an `.app` on macOS, a Start Menu application on Windows, or a `.desktop` launcher on Linux. To build distributable packages on the matching OS, use `npm run dist:mac`, `npm run dist:win`, or `npm run dist:linux`.
 
 Dev run without installing:
 
@@ -155,7 +165,9 @@ desktop/                 Electron session monitor (sidebar + tabs)
 skill/
   SKILL.md               commander-facing skill reference
   handoff/SKILL.md       cross-agent handoff skill (orchestrator-handoff)
-install.sh               installer
+install.js               cross-platform CLI installer
+install.sh               macOS/Linux CLI installer entry point
+install.ps1              Windows PowerShell CLI installer entry point
 ```
 
 ## Notes

@@ -1,6 +1,7 @@
 {
   "name": "orchestrator-desktop",
   "version": "0.1.0",
+  "license": "MIT",
   "description": "Desktop UI for orchestrator worker sessions and live processes",
   "main": "electron/main.js",
   "type": "module",
@@ -8,9 +9,16 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --enable-logging",
-    "pack": "electron-builder --mac dir",
-    "dist": "electron-builder --mac",
-    "install:app": "node scripts/install-mac.js"
+    "pack": "electron-builder",
+    "pack:mac": "electron-builder --mac dir",
+    "pack:win": "electron-builder --win dir",
+    "pack:linux": "electron-builder --linux dir",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux",
+    "install:app": "node scripts/install.js",
+    "install:mac": "node scripts/install.js"
   },
   "dependencies": {},
   "devDependencies": {
@@ -33,13 +41,10 @@
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": [
-        {
-          "target": "dir",
-          "arch": [
-            "arm64"
-          ]
-        }
+        "dmg",
+        "zip"
       ],
+      "arch": ["x64", "arm64"],
       "identity": null,
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
@@ -51,6 +56,21 @@
     },
     "dmg": {
       "title": "Orchestrator"
+    },
+    "win": {
+      "target": ["nsis", "portable"],
+      "artifactName": "Orchestrator-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "linux": {
+      "target": ["AppImage", "deb", "tar.gz"],
+      "category": "Development"
     }
   }
 }
