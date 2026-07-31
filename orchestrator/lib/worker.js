@@ -54,6 +54,7 @@ log(`spawn ${cmd.cliBin} ${cmd.argv.join(" ")} (pty=${cmd.usePty} resume=${isRes
 
 let child = null;
 let finished = false;
+let heartbeatTimer = null;
 let ptyDataBuf = "";
 let combinedBuf = "";
 const BUF_CAP = 256 * 1024; // keep only the tail; logs hold the full output
@@ -78,7 +79,13 @@ process.on("unhandledRejection", (e) => {
   finish(1, null, e?.message || String(e));
 });
 
-setState({ status: "running", startedAt: new Date().toISOString() });
+// A stale exit sentinel from a previous run would make `wait` return
+// immediately with the old result — clear it before going live.
+state.clearRunArtifacts(id);
+setState({ status: "running", pid: process.pid, startedAt: new Date().toISOString() });
+state.beatHeartbeat(id);
+heartbeatTimer = setInterval(() => state.beatHeartbeat(id), 3000);
+heartbeatTimer.unref();
 
 function setState(patch) {
   const cur = state.readState(id) || st;
@@ -227,6 +234,7 @@ function commitWorktree() {
 function finish(code, signal, errMsg) {
   if (finished) return;
   finished = true;
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
   const cur = state.readState(id) || st;
   let status = code === 0 ? "completed" : "failed";
   if (signal) status = "failed";
@@ -241,6 +249,23 @@ function finish(code, signal, errMsg) {
       status = "failed-resumable";
     }
   }
+  // Write the exit sentinel FIRST — it is the durable record `wait` trusts.
+  // If anything below fails (state write race, crash), the result is not lost.
+  try {
+    state.writeExit(id, {
+      status,
+      exitCode: code ?? 0,
+      signal: signal || null,
+      finishedAt: new Date().toISOString(),
+      error: errMsg || null,
+      failureReason: failureReason || null,
+      resumable: !!cur.sessionId,
+      commitSha,
+    });
+  } catch (e) {
+    try { log(`exit sentinel write failed: ${e.message}`); } catch {}
+  }
+  try { fs.unlinkSync(state.workerHeartbeat(id)); } catch {}
   setState({
     status,
     exitCode: code ?? 0,

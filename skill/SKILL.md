@@ -100,7 +100,7 @@ Workers take 5–30+ minutes. **Do not poll in a tight loop.** Use:
 orchestrator wait <id> [--timeout 1800]
 ```
 
-This blocks until the worker reaches a terminal status (`completed` / `failed` / `failed-resumable` / `merged` / `archived` / `handed-off`) and prints that status. If the worker's supervisor process died without recording a result (crash, kill, reboot), `wait` detects the dead supervisor within a few seconds, marks the worker `failed` (resumable when a sessionId was captured), and returns `failed` instead of hanging. Run `wait` calls in parallel for multiple workers (one tool block). If a wait times out, re-issue it.
+This blocks until the worker reaches a terminal status (`completed` / `failed` / `failed-resumable` / `merged` / `archived` / `handed-off`) and prints that status. Completion detection is triple-redundant: the supervisor records its PID, touches a heartbeat file every 3s, and on finish writes a durable exit sentinel file before updating state — so `wait` picks up completion even if the final state write was lost, and never falsely fails a live worker just because its state file has not changed in a while. If the supervisor truly died without recording a result (crash, kill, reboot), `wait` detects it within a few seconds (heartbeat stale AND pid gone AND no sentinel), marks the worker `failed` (resumable when a sessionId was captured), and returns `failed` instead of hanging. Run `wait` calls in parallel for multiple workers (one tool block). If a wait times out, re-issue it.
 
 ### If a worker stopped due to rate limit or transient error
 

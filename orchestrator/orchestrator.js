@@ -125,6 +125,21 @@ async function isSupervisorAlive(id) {
   return !!r.ok;
 }
 
+const TERMINAL_STATUSES = ["completed", "failed", "failed-resumable", "merged", "archived", "handed-off"];
+
+// Read a worker's state, folding in the exit sentinel if the supervisor
+// finished but its final state write was lost. Keeps ls/status/resumable
+// truthful even when no `wait` is running to do the reconciliation.
+function readReconciledState(id) {
+  const s = state.readState(id);
+  if (!s || TERMINAL_STATUSES.includes(s.status)) return s;
+  const exit = state.readExit(id);
+  if (!exit?.status) return s;
+  const next = { ...s, ...exit, pid: null };
+  state.writeState(id, next);
+  return next;
+}
+
 function sendSock(id, msg) {
   return new Promise((resolve) => {
     let done = false;
@@ -154,6 +169,9 @@ function sendSock(id, msg) {
 }
 
 function relaunchWorker(id, nextState, logLabel) {
+  // a stale exit sentinel / heartbeat from the previous run would make
+  // `wait` return the old result instantly — clear before relaunching
+  state.clearRunArtifacts(id);
   state.writeState(id, nextState);
   const workerLog = state.workerLog(id);
   const logFd = fs.openSync(workerLog, "a");
@@ -170,6 +188,7 @@ function relaunchWorker(id, nextState, logLabel) {
 function clearTerminalState(stateObj) {
   return {
     ...stateObj,
+    pid: null,
     exitCode: null,
     signal: null,
     finishedAt: null,
@@ -264,7 +283,7 @@ async function main() {
     }
     case "resume": {
       const id = args._[0];
-      const s = state.readState(id);
+      const s = readReconciledState(id);
       if (!s) { console.error("not found"); process.exit(1); }
       if (!s.sessionId) {
         console.error("no sessionId captured for this worker — cannot resume. Re-spawn instead.");
@@ -275,7 +294,9 @@ async function main() {
         process.exit(1);
       }
       if (s.status === "running" && !args.opts.force) {
-        const alive = await isSupervisorAlive(id);
+        const alive = s.pid
+          ? state.heartbeatAge(id) < 15000 || state.pidAlive(s.pid)
+          : await isSupervisorAlive(id);
         if (alive) {
           console.error("worker supervisor still running. Use --force if you believe it is stuck.");
           process.exit(1);
@@ -368,7 +389,7 @@ async function main() {
     }
     case "resumable": {
       const ids = state.listWorkers();
-      const rows = ids.map((id) => state.readState(id)).filter((s) => s && canResume(s));
+      const rows = ids.map((id) => readReconciledState(id)).filter((s) => s && canResume(s));
       if (!rows.length) { console.log("(none resumable)"); break; }
       console.log("ID\tTYPE\tSTATUS\tREASON\tTASK");
       for (const s of rows) {
@@ -381,7 +402,7 @@ async function main() {
       const ids = state.listWorkers();
       if (!ids.length) { console.log("(no workers)"); break; }
       const rows = ids
-        .map((id) => state.readState(id))
+        .map((id) => readReconciledState(id))
         .filter(Boolean)
         .map((s) => `${s.id}\t${s.type}\t${s.status}\t${s.worktree?.branch || "-"}\t${s.task?.slice(0, 50) || ""}`);
       console.log("ID\tTYPE\tSTATUS\tBRANCH\tTASK");
@@ -390,7 +411,7 @@ async function main() {
     }
     case "status": {
       const id = args._[0];
-      const s = state.readState(id);
+      const s = readReconciledState(id);
       if (!s) { console.error("not found"); process.exit(1); }
       console.log(JSON.stringify(s, null, 2));
       break;
@@ -400,8 +421,18 @@ async function main() {
       const timeout = (parseInt(args.opts.timeout, 10) || 0) * 1000;
       const start = Date.now();
       const TERMINAL = ["completed", "failed", "failed-resumable", "merged", "archived", "handed-off"];
+      // If the state file says running but an exit sentinel exists, the
+      // supervisor finished but its final state write was lost — the sentinel
+      // is the durable record, so reconcile from it.
+      const settleFromExit = (s, exit) => {
+        if (!TERMINAL.includes(s.status)) {
+          state.writeState(id, { ...s, ...exit, pid: null });
+        }
+        console.log(exit.status);
+        process.exit(0);
+      };
       let missingReads = 0;
-      let deadPings = 0;
+      let deadChecks = 0;
       // eslint-disable-next-line no-constant-condition
       while (true) {
         const s = state.readState(id);
@@ -413,30 +444,43 @@ async function main() {
         }
         missingReads = 0;
         if (TERMINAL.includes(s.status)) { console.log(s.status); process.exit(0); }
-        // liveness: a non-terminal worker must have a supervisor holding the
-        // IPC socket. If it died without recording a result (crash, kill -9,
-        // reboot), mark the worker failed instead of waiting forever.
-        const lastTouch = new Date(s.updatedAt || s.startedAt || s.createdAt || 0).getTime();
-        if (Date.now() - lastTouch > 15000) {
-          const alive = await isSupervisorAlive(id);
-          deadPings = alive ? 0 : deadPings + 1;
-          if (deadPings >= 3) {
-            state.writeState(id, {
-              ...s,
-              status: "failed",
-              failureReason: s.failureReason || "supervisor-died",
-              error: s.error || "worker supervisor exited without recording a result",
-              finishedAt: new Date().toISOString(),
-              resumable: !!s.sessionId,
-            });
-            console.log("failed");
-            process.exit(0);
-          }
+        const exit = state.readExit(id);
+        if (exit?.status) settleFromExit(s, exit);
+        // liveness: the supervisor records its pid and touches a heartbeat
+        // file every 3s. It is alive if either signal holds (heartbeat covers
+        // pid reuse; pid covers a briefly-blocked event loop). Only when both
+        // are gone — and still no exit sentinel — is the worker declared dead.
+        let alive;
+        if (s.pid) {
+          alive = state.heartbeatAge(id) < 15000 || state.pidAlive(s.pid);
+        } else if (s.status === "pending") {
+          // supervisor not up yet; give it a startup grace period
+          const born = new Date(s.createdAt || 0).getTime();
+          alive = Date.now() - born < 60000;
         } else {
-          deadPings = 0;
+          // pre-pid-era worker: fall back to the IPC socket ping
+          alive = await isSupervisorAlive(id);
+        }
+        if (alive) {
+          deadChecks = 0;
+        } else if (++deadChecks >= 3) {
+          // one last look — the supervisor may have exited cleanly between checks
+          const lastExit = state.readExit(id);
+          if (lastExit?.status) settleFromExit(s, lastExit);
+          state.writeState(id, {
+            ...s,
+            pid: null,
+            status: "failed",
+            failureReason: s.failureReason || "supervisor-died",
+            error: s.error || "worker supervisor exited without recording a result",
+            finishedAt: new Date().toISOString(),
+            resumable: !!s.sessionId,
+          });
+          console.log("failed");
+          process.exit(0);
         }
         if (timeout && Date.now() - start > timeout) { console.log("timeout"); process.exit(124); }
-        await new Promise((r) => setTimeout(r, 1500));
+        await new Promise((r) => setTimeout(r, 1000));
       }
     }
     case "logs": {
@@ -504,7 +548,7 @@ async function main() {
     }
     case "integrate": {
       const ids = state.listWorkers();
-      const done = ids.map((id) => state.readState(id)).filter((s) => s?.status === "completed");
+      const done = ids.map((id) => readReconciledState(id)).filter((s) => s?.status === "completed");
       if (!done.length) { console.log("(no completed workers to integrate)"); break; }
       const into = args.opts.into || (cfg.integrationBranch || "integrate/batch");
       for (const s of done) {
@@ -539,6 +583,7 @@ async function main() {
       }
       try { fs.unlinkSync(state.workerFile(id)); } catch {}
       try { fs.unlinkSync(state.workerSock(id)); } catch {}
+      state.clearRunArtifacts(id);
       console.log(`archived ${id}`);
       break;
     }
