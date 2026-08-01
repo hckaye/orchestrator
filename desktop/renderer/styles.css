@@ -105,6 +105,25 @@ body {
   background: var(--green-soft);
 }
 
+.btn.archive-old-btn {
+  color: var(--text-dim);
+  border-color: var(--border);
+  background: var(--bg-elev);
+  font-size: 11px;
+  padding: 4px 9px;
+}
+
+.btn.archive-old-btn:not(:disabled):hover {
+  color: var(--red);
+  border-color: rgba(240, 113, 120, 0.4);
+  background: var(--red-soft);
+}
+
+.btn.archive-old-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* —— Layout —— */
 .layout {
   display: flex;

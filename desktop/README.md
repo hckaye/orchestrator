@@ -38,9 +38,13 @@ npm start
 | **Sidebar → Workers** | Flat list with status / type filters |
 | **Sidebar → Processes** | Live supervisors / CLI / wait, grouped by parent |
 | **Tab scope** | Selecting a parent replaces all tabs with that family's workers; other parents' tabs close |
-| **All terminals** | Multiplex live logs for every worker under the parent |
+| **All terminals** | Multiplex worker logs in pages of 12 under the parent |
 | **Terminal (default)** | Terminal-style realtime log follow for one worker |
 | **Overview / Process / Chain / JSON** | Metadata, process tree, handoff chain, raw state |
+
+The **Archive >1d** button previews and then archives all workers that have been
+finished for at least 24 hours. Running and waiting workers are never included;
+worker logs remain on disk.
 
 Data is read from `~/.orchestrator/workers/*.json` and the process table. No daemon is required; the app watches the state directory and rescans processes every few seconds.
 

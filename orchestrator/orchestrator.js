@@ -11,6 +11,10 @@ import * as git from "./lib/git.js";
 import { buildContinuationPrompt, canResume } from "./lib/resume.js";
 import { buildHandoffBriefing, collectHandoffContext } from "./lib/handoff.js";
 import { pickWorkerRuntime, listModels, formatModelsTable } from "./lib/models.js";
+import {
+  findArchiveCandidates,
+  parseAgeMs,
+} from "./lib/archive.js";
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 
@@ -37,6 +41,8 @@ Usage:
   orchestrator integrate [--into branch]          Merge all completed workers
   orchestrator finish [--head branch] [--base b]  Push integration branch + open PR
   orchestrator archive <id>                       Remove worker state + worktree
+  orchestrator archive --older-than 1d [--dry-run]
+                                                  Archive all finished workers older than an age
   orchestrator models [type] [--json]             List models (with effort info)
   orchestrator config [show|set <key> <value>]    View/edit config
 
@@ -196,6 +202,19 @@ function clearTerminalState(stateObj) {
     resultTail: null,
     failureReason: null,
   };
+}
+
+function archiveWorkerState(id, workerState = null) {
+  const s = workerState || state.readState(id);
+  if (!s) return false;
+  if (s.repo && s.worktree) {
+    const slug = path.basename(s.worktree.path);
+    git.removeWorktree(s.repo, slug);
+  }
+  try { fs.unlinkSync(state.workerFile(id)); } catch {}
+  try { fs.unlinkSync(state.workerSock(id)); } catch {}
+  state.clearRunArtifacts(id);
+  return true;
 }
 
 function workerRuntimeFromArgs(cfg, type, opts, fallbackState) {
@@ -575,15 +594,54 @@ async function main() {
     }
     case "archive": {
       const id = args._[0];
+      if (args.opts["older-than"] !== undefined) {
+        if (id) {
+          console.error("do not combine a worker id with --older-than");
+          process.exit(2);
+        }
+        const olderThanMs = parseAgeMs(args.opts["older-than"]);
+        if (!olderThanMs) {
+          console.error("invalid --older-than value; use a duration such as 24h or 1d");
+          process.exit(2);
+        }
+        const now = Date.now();
+        const candidates = findArchiveCandidates(
+          state.listWorkers().map((workerId) => readReconciledState(workerId)).filter(Boolean),
+          { olderThanMs, now }
+        );
+        if (!candidates.length) {
+          console.log(args.opts["dry-run"] ? "(no matching workers)" : "archived 0 workers");
+          break;
+        }
+        if (args.opts["dry-run"]) {
+          for (const candidate of candidates) {
+            console.log(`${candidate.id}\t${candidate.status}\t${candidate.finishedAt || candidate.updatedAt}`);
+          }
+          console.log(`would archive ${candidates.length} workers`);
+          break;
+        }
+        let archived = 0;
+        for (const candidate of candidates) {
+          // Re-read immediately before deletion so a resumed worker is never
+          // archived based on a stale list snapshot.
+          const current = readReconciledState(candidate.id);
+          const fresh = findArchiveCandidates(current ? [current] : [], { olderThanMs, now });
+          if (!fresh.length) continue;
+          if (archiveWorkerState(candidate.id, current)) {
+            archived += 1;
+            console.log(`archived ${candidate.id}`);
+          }
+        }
+        console.log(`archived ${archived} workers`);
+        break;
+      }
+      if (!id) {
+        console.error("worker id or --older-than is required");
+        process.exit(2);
+      }
       const s = state.readState(id);
       if (!s) { console.error("not found"); process.exit(1); }
-      if (s.repo && s.worktree) {
-        const slug = path.basename(s.worktree.path);
-        git.removeWorktree(s.repo, slug);
-      }
-      try { fs.unlinkSync(state.workerFile(id)); } catch {}
-      try { fs.unlinkSync(state.workerSock(id)); } catch {}
-      state.clearRunArtifacts(id);
+      archiveWorkerState(id, s);
       console.log(`archived ${id}`);
       break;
     }

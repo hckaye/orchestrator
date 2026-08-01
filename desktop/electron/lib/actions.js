@@ -6,7 +6,13 @@ import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import os from "node:os";
 import { workerSock, workerLog, workerFile, ROOT } from "./paths.js";
-import { readState, invalidateSummaryCache } from "./workers.js";
+import {
+  DEFAULT_ARCHIVE_AGE_MS,
+  isArchiveCandidate,
+  listArchiveCandidates,
+  readState,
+  invalidateSummaryCache,
+} from "./workers.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -333,6 +339,37 @@ export async function archiveWorker(id) {
     return { ok: true, mode: "archive", message: r.stdout || `archived ${id}` };
   }
   return { ok: false, error: r.error || "archive failed", stderr: r.stderr };
+}
+
+export async function archiveOldWorkers({
+  olderThanMs = DEFAULT_ARCHIVE_AGE_MS,
+} = {}) {
+  const candidates = listArchiveCandidates({ olderThanMs });
+  const archived = [];
+  const skipped = [];
+  const failed = [];
+
+  for (const candidate of candidates) {
+    // Selection and deletion are deliberately separate. A worker may have
+    // resumed after the preview, so verify the current state again.
+    const current = readState(candidate.id);
+    if (!isArchiveCandidate(current, { olderThanMs })) {
+      skipped.push(candidate.id);
+      continue;
+    }
+    const result = await archiveWorker(candidate.id);
+    if (result.ok) archived.push(candidate.id);
+    else failed.push({ id: candidate.id, error: result.error || "archive failed" });
+  }
+
+  invalidateSummaryCache();
+  return {
+    ok: failed.length === 0,
+    archived,
+    skipped,
+    failed,
+    matched: candidates.length,
+  };
 }
 
 function isLiveSock(id) {

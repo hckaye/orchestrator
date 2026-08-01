@@ -101,6 +101,8 @@ orchestrator merge  <id>                  # merge worker branch into integration
 orchestrator integrate                    # merge all completed workers
 orchestrator finish  --base main          # push integration branch + open PR
 orchestrator archive <id>                 # remove worktree + state
+orchestrator archive --older-than 1d      # archive every finished worker at least one day old
+orchestrator archive --older-than 1d --dry-run  # preview without changing anything
 ```
 
 ### Review → revise cycle

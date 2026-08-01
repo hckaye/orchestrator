@@ -26,7 +26,7 @@ const shortPath = (p) => {
  */
 export function formatStreamLog(rawLog, opts = {}) {
   const live = !!opts.live;
-  const maxBlocks = opts.maxBlocks ?? 400;
+  const maxBlocks = Math.max(20, opts.maxBlocks ?? 400);
   if (!rawLog || !String(rawLog).trim()) {
     return `<span class="term-dim">${live ? "waiting for output…" : "(empty log)"}</span>${
       live ? '<span class="term-cursor"></span>' : ""
@@ -36,6 +36,18 @@ export function formatStreamLog(rawLog, opts = {}) {
   const lines = String(rawLog).split("\n");
   /** @type {{ kind: string, html: string }[]} */
   const blocks = [];
+  let omittedBlocks = 0;
+  const pushBlock = (block) => {
+    blocks.push(block);
+    // Do not retain thousands of already-formatted blocks only to slice them
+    // at the end. A small overlap keeps nearby stream events coherent.
+    const retain = maxBlocks + 40;
+    if (blocks.length > retain + 40) {
+      const remove = blocks.length - retain;
+      blocks.splice(0, remove);
+      omittedBlocks += remove;
+    }
+  };
   let textBuf = "";
   let thoughtBuf = "";
   let lastRawJson = null; // consecutive-line dedupe (stdout+stderr double)
@@ -49,7 +61,7 @@ export function formatStreamLog(rawLog, opts = {}) {
     textBuf = "";
     lastTextPiece = "";
     if (!t.trim()) return;
-    blocks.push({
+    pushBlock({
       kind: "assistant",
       html: `<div class="sf-block sf-assistant">
         <div class="sf-label">assistant</div>
@@ -66,7 +78,7 @@ export function formatStreamLog(rawLog, opts = {}) {
     if (!t.trim()) return;
     // keep thoughts compact — show last ~2.5k if huge
     const shown = t.length > 2500 ? "…" + t.slice(-2500) : t;
-    blocks.push({
+    pushBlock({
       kind: "thinking",
       html: `<div class="sf-block sf-thinking">
         <div class="sf-label">thinking</div>
@@ -100,7 +112,7 @@ export function formatStreamLog(rawLog, opts = {}) {
     // Supervisor / plain timestamp lines
     if (/^\[[\d\-T:.Z]+\]\s/.test(line) || /^=== /.test(line)) {
       flushStreams();
-      blocks.push({
+      pushBlock({
         kind: "sys",
         html: `<div class="sf-block sf-sys"><span class="sf-sys-mark">▸</span> ${esc(line)}</div>`,
       });
@@ -122,7 +134,7 @@ export function formatStreamLog(rawLog, opts = {}) {
       } catch {
         lastRawJson = null;
         flushStreams();
-        blocks.push({
+        pushBlock({
           kind: "plain",
           html: `<div class="sf-line">${esc(line)}</div>`,
         });
@@ -135,7 +147,7 @@ export function formatStreamLog(rawLog, opts = {}) {
         flushThought,
         appendText,
         appendThought,
-        push: (b) => blocks.push(b),
+        push: pushBlock,
         pendingCmd: {
           get: () => pendingCmd,
           set: (v) => {
@@ -147,7 +159,7 @@ export function formatStreamLog(rawLog, opts = {}) {
         // unknown JSON — compact one-liner
         flushStreams();
         const t = ev.type || ev.event || "json";
-        blocks.push({
+        pushBlock({
           kind: "json",
           html: `<div class="sf-block sf-json-fallback"><span class="sf-label">${esc(
             String(t)
@@ -164,7 +176,7 @@ export function formatStreamLog(rawLog, opts = {}) {
     const cls = /\b(error|failed|exception|ActionRequiredError)\b/i.test(line)
       ? "sf-err"
       : "sf-plain";
-    blocks.push({
+    pushBlock({
       kind: "plain",
       html: `<div class="sf-line ${cls}">${esc(line)}</div>`,
     });
@@ -172,7 +184,7 @@ export function formatStreamLog(rawLog, opts = {}) {
 
   flushStreams();
   if (pendingCmd) {
-    blocks.push({
+    pushBlock({
       kind: "cmd",
       html: renderCommand({
         command: pendingCmd.command,
@@ -183,9 +195,10 @@ export function formatStreamLog(rawLog, opts = {}) {
   }
 
   const slice = blocks.length > maxBlocks ? blocks.slice(-maxBlocks) : blocks;
+  const omitted = omittedBlocks + Math.max(0, blocks.length - maxBlocks);
   const trunc =
-    blocks.length > maxBlocks
-      ? `<div class="sf-block sf-sys sf-dim">… ${blocks.length - maxBlocks} earlier blocks omitted …</div>`
+    omitted > 0
+      ? `<div class="sf-block sf-sys sf-dim">… ${omitted} earlier blocks omitted …</div>`
       : "";
 
   return (

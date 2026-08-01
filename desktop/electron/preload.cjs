@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("orchestrator", {
   resume: (id, message) => ipcRenderer.invoke("workers:resume", id, message || ""),
   forceFail: (id) => ipcRenderer.invoke("workers:forceFail", id),
   archive: (id) => ipcRenderer.invoke("workers:archive", id),
+  archiveOld: (opts) => ipcRenderer.invoke("workers:archiveOld", opts || {}),
 
   onWorkersUpdate: (cb) => {
     const handler = (_e, data) => cb(data);

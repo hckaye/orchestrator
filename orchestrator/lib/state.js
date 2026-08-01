@@ -122,7 +122,7 @@ export function listWorkers() {
   ensureDirs();
   return fs
     .readdirSync(WORKERS_DIR)
-    .filter((f) => f.endsWith(".json"))
+    .filter((f) => f.endsWith(".json") && !f.endsWith(".exit.json") && !f.includes(".tmp"))
     .map((f) => path.basename(f, ".json"));
 }
 

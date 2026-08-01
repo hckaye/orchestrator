@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { replaceDirectory } from "./install-utils.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const productName = "Orchestrator";
@@ -22,12 +23,6 @@ function exists(file) {
   try { fs.accessSync(file); return true; } catch { return false; }
 }
 
-function replaceDirectory(source, destination) {
-  fs.rmSync(destination, { recursive: true, force: true });
-  fs.mkdirSync(path.dirname(destination), { recursive: true });
-  fs.cpSync(source, destination, { recursive: true });
-}
-
 function findMacApp() {
   const candidates = [
     path.join(root, "dist", "mac-arm64", `${productName}.app`),
@@ -42,6 +37,11 @@ function installMac() {
   const app = findMacApp();
   if (!app) throw new Error("Built .app not found under dist/");
   let destination = path.join("/Applications", `${productName}.app`);
+  // Replacing a running .app can leave the old executable paired with new
+  // resources. Ask the existing instance to quit before copying the bundle.
+  spawnSync("osascript", ["-e", `tell application "${productName}" to quit`], {
+    stdio: "ignore",
+  });
   try {
     replaceDirectory(app, destination);
   } catch (error) {
@@ -50,7 +50,7 @@ function installMac() {
     replaceDirectory(app, destination);
   }
   spawnSync("xattr", ["-cr", destination], { stdio: "ignore" });
-  run("open", ["-a", destination]);
+  run("open", ["-n", "-a", destination]);
   console.log(`Installed: ${destination}`);
 }
 

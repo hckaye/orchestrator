@@ -34,12 +34,42 @@ const ACTIVE = new Set([
   "awaiting-question",
 ]);
 
+export const DEFAULT_ARCHIVE_AGE_MS = 24 * 60 * 60 * 1000;
+
 export function isTerminal(status) {
   return TERMINAL.has(status);
 }
 
 export function isActive(status) {
   return ACTIVE.has(status);
+}
+
+export function terminalTimestamp(state) {
+  if (!state || !isTerminal(state.status)) return null;
+  for (const value of [state.finishedAt, state.updatedAt]) {
+    if (!value) continue;
+    const timestamp = new Date(value).getTime();
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+  return null;
+}
+
+export function isArchiveCandidate(state, {
+  olderThanMs = DEFAULT_ARCHIVE_AGE_MS,
+  now = Date.now(),
+} = {}) {
+  if (!Number.isFinite(olderThanMs) || olderThanMs <= 0) return false;
+  const timestamp = terminalTimestamp(state);
+  return timestamp !== null && timestamp <= now - olderThanMs;
+}
+
+export function listArchiveCandidates(options = {}) {
+  return listWorkerIds()
+    .map((id) => readState(id))
+    .filter((state) => isArchiveCandidate(state, options))
+    .sort((a, b) => terminalTimestamp(a) - terminalTimestamp(b))
+    .map(summarize)
+    .filter(Boolean);
 }
 
 export function readState(id) {
@@ -53,7 +83,7 @@ export function readState(id) {
 export function listWorkerIds() {
   ensureDirs();
   return readdirSafe(WORKERS_DIR)
-    .filter((f) => f.endsWith(".json") && !f.includes(".tmp"))
+    .filter((f) => f.endsWith(".json") && !f.endsWith(".exit.json") && !f.includes(".tmp"))
     .map((f) => path.basename(f, ".json"));
 }
 
@@ -184,12 +214,30 @@ export function getDetail(id) {
   };
 }
 
-export function readLogTail(id, { bytes = 256 * 1024, maxLines = 400 } = {}) {
+export function readLogTail(id, {
+  bytes = 192 * 1024,
+  maxLines = 1600,
+  knownSize = null,
+  knownMtimeMs = null,
+} = {}) {
   const file = workerLog(id);
   try {
     const stat = fs.statSync(file);
     const size = stat.size;
-    const start = Math.max(0, size - bytes);
+    if (
+      Number(knownSize) === size &&
+      Number(knownMtimeMs) === stat.mtimeMs
+    ) {
+      return {
+        path: file,
+        size,
+        mtimeMs: stat.mtimeMs,
+        unchanged: true,
+      };
+    }
+    const safeBytes = Math.min(Math.max(Number(bytes) || 0, 16 * 1024), 512 * 1024);
+    const safeMaxLines = Math.min(Math.max(Number(maxLines) || 0, 100), 4000);
+    const start = Math.max(0, size - safeBytes);
     const fd = fs.openSync(file, "r");
     try {
       const buf = Buffer.alloc(size - start);
@@ -200,11 +248,11 @@ export function readLogTail(id, { bytes = 256 * 1024, maxLines = 400 } = {}) {
         if (nl >= 0) text = text.slice(nl + 1);
       }
       const lines = text.split("\n");
-      const sliced = lines.length > maxLines ? lines.slice(-maxLines) : lines;
+      const sliced = lines.length > safeMaxLines ? lines.slice(-safeMaxLines) : lines;
       return {
         path: file,
         size,
-        truncated: start > 0 || lines.length > maxLines,
+        truncated: start > 0 || lines.length > safeMaxLines,
         text: sliced.join("\n"),
         mtimeMs: stat.mtimeMs,
       };
@@ -261,10 +309,20 @@ export class WorkerWatcher extends EventEmitter {
     if (this._watcher) return;
     try {
       this._watcher = fs.watch(WORKERS_DIR, { persistent: true }, (event, filename) => {
-        if (filename && filename.endsWith(".json") && !filename.includes(".tmp")) {
-          this._dirty.add(path.basename(filename, ".json"));
+        if (!filename) {
+          this._schedule();
+          return;
         }
-        this._schedule();
+        // Heartbeats change every few seconds and logs live in another
+        // directory. Only state JSON changes should rebuild the worker list.
+        if (
+          filename.endsWith(".json") &&
+          !filename.endsWith(".exit.json") &&
+          !filename.includes(".tmp")
+        ) {
+          this._dirty.add(path.basename(filename, ".json"));
+          this._schedule();
+        }
       });
     } catch (e) {
       this.emit("error", e);

@@ -11,6 +11,7 @@ import {
   resumeWorker,
   forceFailWorker,
   archiveWorker,
+  archiveOldWorkers,
 } from "./lib/actions.js";
 import { ROOT } from "./lib/paths.js";
 
@@ -157,6 +158,16 @@ function setupIpc() {
   ipcMain.handle("workers:archive", async (_e, id) => {
     if (!id || typeof id !== "string") return { ok: false, error: "bad id" };
     return archiveWorker(id);
+  });
+
+  ipcMain.handle("workers:archiveOld", async (_e, opts) => {
+    if (opts?.dryRun) {
+      return {
+        ok: true,
+        candidates: workers.listArchiveCandidates(),
+      };
+    }
+    return archiveOldWorkers();
   });
 }
 

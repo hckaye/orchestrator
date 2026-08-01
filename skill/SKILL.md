@@ -219,6 +219,8 @@ This pushes the integration branch and opens a PR to base via `gh`. Report the P
 
 ```bash
 orchestrator archive <id>   # remove worktree + state (keep logs)
+orchestrator archive --older-than 1d --dry-run  # preview finished workers at least one day old
+orchestrator archive --older-than 1d            # archive every matching worker
 ```
 
 Archive after a worker is merged and no longer needed.

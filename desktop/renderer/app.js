@@ -6,6 +6,13 @@ const api = window.orchestrator;
 const MUX_PREFIX = "mux:";
 const DEFAULT_SUB = "terminal";
 const SUBTABS = ["terminal", "overview", "process", "chain", "json"];
+const DAY_MS = 24 * 60 * 60 * 1000;
+const LOG_READ_BYTES = 192 * 1024;
+const LOG_MAX_LINES = 1600;
+const LOG_MAX_BLOCKS = 220;
+const LOG_POLL_MS = 1200;
+const MUX_PAGE_SIZE = 12;
+const MAX_CACHED_LOGS = 24;
 
 const state = {
   summaries: [],
@@ -24,9 +31,14 @@ const state = {
   selectedSidebarId: null, // worker id highlight
   details: new Map(),
   logs: new Map(), // id -> { path, size, text, mtimeMs, truncated, error? }
+  formattedLogs: new Map(), // id -> { key, html }
+  logRequests: new Set(),
   subtab: new Map(),
   logFollow: new Map(),
+  muxOffset: new Map(),
   logTimer: null,
+  archiveTimer: null,
+  archiveBusy: false,
 };
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -210,8 +222,10 @@ function selectParent(parentKey, { focusId = null } = {}) {
 function discardTabState(id) {
   state.details.delete(id);
   state.logs.delete(id);
+  state.formattedLogs.delete(id);
   state.subtab.delete(id);
   state.logFollow.delete(id);
+  state.muxOffset.delete(id);
 }
 
 /**
@@ -297,12 +311,12 @@ function activateTab(id) {
 }
 
 function hydrateOpenTabs() {
-  for (const id of state.openTabs) {
-    if (isMuxTab(id)) hydrateMuxLogs(id);
-    else {
-      ensureDetail(id);
-      ensureLog(id);
-    }
+  const id = state.activeTab;
+  if (!id) return;
+  if (isMuxTab(id)) hydrateMuxLogs(id);
+  else {
+    ensureDetail(id);
+    ensureLog(id);
   }
 }
 
@@ -318,6 +332,7 @@ function renderSidebar() {
   const filtered = filteredSummaries();
   const liveCount = state.processes.supervisors?.length || 0;
   const activeCount = state.summaries.filter((s) => s.active).length;
+  updateArchiveOldButton();
 
   stats.innerHTML = `
     <span>${filtered.length} shown</span>
@@ -626,12 +641,21 @@ async function ensureDetail(id) {
 }
 
 async function ensureLog(id) {
-  if (isMuxTab(id)) return;
+  if (isMuxTab(id) || state.logRequests.has(id)) return;
+  state.logRequests.add(id);
   try {
-    // More raw lines for token-stream coalescing; formatter collapses them.
-    const log = await api.getLog(id, { bytes: 512 * 1024, maxLines: 4000 });
     const prev = state.logs.get(id);
+    const log = await api.getLog(id, {
+      bytes: LOG_READ_BYTES,
+      maxLines: LOG_MAX_LINES,
+      knownSize: prev?.size,
+      knownMtimeMs: prev?.mtimeMs,
+    });
+    if (!log || log.unchanged) return;
+    state.logs.delete(id);
     state.logs.set(id, log);
+    state.formattedLogs.delete(id);
+    trimLogCache();
     // Incremental terminal update when possible
     if (state.activeTab === id) {
       const panel = panelEl(id);
@@ -653,12 +677,39 @@ async function ensureLog(id) {
     }
   } catch (e) {
     console.error(e);
+  } finally {
+    state.logRequests.delete(id);
   }
 }
 
-async function hydrateMuxLogs(muxId) {
+function trimLogCache() {
+  if (state.logs.size <= MAX_CACHED_LOGS) return;
+  const protectedIds = new Set(
+    state.activeTab && isMuxTab(state.activeTab)
+      ? visibleMuxWorkers(state.activeTab).map((worker) => worker.id)
+      : state.activeTab
+        ? [state.activeTab]
+        : []
+  );
+  for (const id of state.logs.keys()) {
+    if (state.logs.size <= MAX_CACHED_LOGS) break;
+    if (protectedIds.has(id)) continue;
+    state.logs.delete(id);
+    state.formattedLogs.delete(id);
+  }
+}
+
+function visibleMuxWorkers(muxId) {
   const parent = parentOfTab(muxId);
-  const ids = workersForParent(parent).map((w) => w.id);
+  const workers = workersForParent(parent);
+  const maxOffset = Math.max(0, Math.floor((workers.length - 1) / MUX_PAGE_SIZE) * MUX_PAGE_SIZE);
+  const offset = Math.min(state.muxOffset.get(muxId) || 0, maxOffset);
+  if (state.muxOffset.get(muxId) !== offset) state.muxOffset.set(muxId, offset);
+  return workers.slice(offset, offset + MUX_PAGE_SIZE);
+}
+
+async function hydrateMuxLogs(muxId) {
+  const ids = visibleMuxWorkers(muxId).map((w) => w.id);
   await Promise.all(ids.map((id) => ensureLog(id)));
   softRefreshActiveIf(muxId);
 }
@@ -703,7 +754,17 @@ function workerTypeOf(id) {
 }
 
 function formatTerminalHtml(text, { live = false, workerType = null } = {}) {
-  return formatStreamLog(text, { live, workerType, maxBlocks: 350 });
+  return formatStreamLog(text, { live, workerType, maxBlocks: LOG_MAX_BLOCKS });
+}
+
+function formattedLogHtml(id, log, { live = false, workerType = null } = {}) {
+  if (!log) return formatTerminalHtml("…", { live, workerType });
+  const key = `${log.mtimeMs || 0}:${log.size || 0}:${live ? 1 : 0}:${workerType || ""}`;
+  const cached = state.formattedLogs.get(id);
+  if (cached?.key === key) return cached.html;
+  const html = formatTerminalHtml(log.text || "", { live, workerType });
+  state.formattedLogs.set(id, { key, html });
+  return html;
 }
 
 function isSessionActive(id, summary) {
@@ -722,7 +783,7 @@ function updateTerminalBody(panel, id, log) {
   const follow = state.logFollow.get(id) !== false;
   const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
   const active = isSessionActive(id);
-  body.innerHTML = formatTerminalHtml(log?.text || "", {
+  body.innerHTML = formattedLogHtml(id, log, {
     live: active,
     workerType: workerTypeOf(id),
   });
@@ -777,7 +838,7 @@ function updateMuxPane(panel, workerId, log) {
   if (!body) return;
   const follow = state.logFollow.get(muxIdFor(state.activeParent)) !== false;
   const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
-  body.innerHTML = formatTerminalHtml(log?.text || "", {
+  body.innerHTML = formattedLogHtml(workerId, log, {
     live: isLive(workerId),
     workerType: workerTypeOf(workerId),
   });
@@ -865,7 +926,9 @@ function renderPanel(panel, id) {
 
 function renderMuxPanel(panel, muxId) {
   const parent = parentOfTab(muxId);
-  const workers = workersForParent(parent);
+  const allWorkers = workersForParent(parent);
+  const workers = visibleMuxWorkers(muxId);
+  const offset = state.muxOffset.get(muxId) || 0;
   const follow = state.logFollow.get(muxId) !== false;
 
   panel.innerHTML = `
@@ -873,12 +936,18 @@ function renderMuxPanel(panel, muxId) {
       <div class="panel-title-row">
         <div>
           <h2 class="panel-title">All terminals · ${esc(parentName(parent))}</h2>
-          <div class="panel-sub">${workers.length} workers · live stream of parent + sub workers</div>
+          <div class="panel-sub">${
+            allWorkers.length
+              ? `${offset + 1}-${offset + workers.length} / ${allWorkers.length} workers`
+              : "0 workers"
+          } · logs are loaded only on this page</div>
         </div>
         <div class="panel-actions">
           <label class="muted follow-label">
             <input type="checkbox" data-log-follow ${follow ? "checked" : ""} /> follow
           </label>
+          <button type="button" class="btn" data-action="prev-mux" ${offset > 0 ? "" : "disabled"}>Previous</button>
+          <button type="button" class="btn" data-action="next-mux" ${offset + workers.length < allWorkers.length ? "" : "disabled"}>Next</button>
           <button type="button" class="btn ghost" data-action="refresh-mux">Refresh</button>
         </div>
       </div>
@@ -909,6 +978,16 @@ function renderMuxPanel(panel, muxId) {
   $("[data-action='refresh-mux']", panel)?.addEventListener("click", () => {
     hydrateMuxLogs(muxId);
   });
+  $("[data-action='prev-mux']", panel)?.addEventListener("click", () => {
+    state.muxOffset.set(muxId, Math.max(0, offset - MUX_PAGE_SIZE));
+    renderMuxPanel(panel, muxId);
+    hydrateMuxLogs(muxId);
+  });
+  $("[data-action='next-mux']", panel)?.addEventListener("click", () => {
+    state.muxOffset.set(muxId, offset + MUX_PAGE_SIZE);
+    renderMuxPanel(panel, muxId);
+    hydrateMuxLogs(muxId);
+  });
 
   // scroll all panes to bottom if follow
   if (follow) {
@@ -930,7 +1009,7 @@ function muxPaneHtml(w) {
         ${live ? '<span class="pulse"></span>' : ""}
       </button>
       <div class="term-window mux-term">
-        <div class="term-body">${formatTerminalHtml(log?.text || (log ? "" : "…"), {
+        <div class="term-body">${formattedLogHtml(w.id, log, {
           live,
           workerType: w.type,
         })}</div>
@@ -1230,7 +1309,7 @@ function renderTerminal(id, s) {
     `;
   }
 
-  const bodyHtml = formatTerminalHtml(log.text || "", {
+  const bodyHtml = formattedLogHtml(id, log, {
     live: active,
     workerType: s?.type || workerTypeOf(id),
   }).replace(/<span class="term-cursor"><\/span>/g, "");
@@ -1456,6 +1535,77 @@ function fmtTs(iso) {
 }
 
 // —— live badge / polling ——
+function archiveCandidateCount() {
+  const cutoff = Date.now() - DAY_MS;
+  return state.summaries.filter((summary) => {
+    if (!summary.terminal) return false;
+    const timestamp = new Date(summary.finishedAt || summary.updatedAt || "").getTime();
+    return Number.isFinite(timestamp) && timestamp <= cutoff;
+  }).length;
+}
+
+function updateArchiveOldButton() {
+  const button = $("#btn-archive-old");
+  if (!button) return;
+  const count = archiveCandidateCount();
+  button.disabled = state.archiveBusy || count === 0;
+  button.textContent = state.archiveBusy
+    ? "Archiving…"
+    : `Archive >1d${count ? ` (${count})` : ""}`;
+}
+
+async function archiveOldWorkers() {
+  if (state.archiveBusy) return;
+  state.archiveBusy = true;
+  updateArchiveOldButton();
+  try {
+    const preview = await api.archiveOld({ dryRun: true });
+    const candidates = preview?.candidates || [];
+    if (!preview?.ok) throw new Error(preview?.error || "対象を確認できませんでした");
+    if (!candidates.length) {
+      window.alert("終了から1日以上経過したワーカーはありません。");
+      return;
+    }
+
+    const sample = candidates
+      .slice(0, 8)
+      .map((worker) => `• ${worker.id} (${worker.status})`)
+      .join("\n");
+    const more = candidates.length > 8 ? `\nほか ${candidates.length - 8} 件` : "";
+    if (
+      !window.confirm(
+        `終了から1日以上経過した ${candidates.length} 件をアーカイブします。\n` +
+          "worktree と状態ファイルを削除します。ログは残ります。\n\n" +
+          sample +
+          more
+      )
+    ) {
+      return;
+    }
+
+    const result = await api.archiveOld();
+    const payload = await api.listWorkers();
+    applyWorkersPayload(payload);
+    if (result?.failed?.length) {
+      const failures = result.failed
+        .slice(0, 5)
+        .map((failure) => `${failure.id}: ${failure.error}`)
+        .join("\n");
+      window.alert(
+        `${result.archived?.length || 0} 件をアーカイブしました。` +
+          `\n${result.failed.length} 件は失敗しました。\n${failures}`
+      );
+    } else {
+      window.alert(`${result?.archived?.length || 0} 件をアーカイブしました。`);
+    }
+  } catch (error) {
+    window.alert(`一括アーカイブに失敗しました。\n${error.message || error}`);
+  } finally {
+    state.archiveBusy = false;
+    updateArchiveOldButton();
+  }
+}
+
 function updateLiveBadge() {
   const n = state.processes.supervisors?.length || 0;
   const badge = $("#live-badge");
@@ -1463,24 +1613,28 @@ function updateLiveBadge() {
   badge.classList.toggle("has-live", n > 0);
 }
 
+function startArchiveClock() {
+  if (state.archiveTimer) clearInterval(state.archiveTimer);
+  state.archiveTimer = setInterval(updateArchiveOldButton, 60 * 1000);
+}
+
 function startLogPolling() {
   if (state.logTimer) clearInterval(state.logTimer);
   state.logTimer = setInterval(() => {
-    if (!state.activeTab) return;
+    if (document.hidden || !state.activeTab) return;
     if (isMuxTab(state.activeTab)) {
-      const parent = parentOfTab(state.activeTab);
-      const ids = workersForParent(parent).map((w) => w.id);
-      // poll live/active first
-      const priority = ids.filter((id) => isLive(id) || state.summaries.find((s) => s.id === id)?.active);
-      const rest = ids.filter((id) => !priority.includes(id));
-      [...priority, ...rest].slice(0, 12).forEach((id) => ensureLog(id));
+      // Completed logs are immutable in normal operation. Only live panes
+      // need continuous polling; manual refresh still checks every visible pane.
+      visibleMuxWorkers(state.activeTab)
+        .filter((w) => isLive(w.id) || w.active)
+        .forEach((w) => ensureLog(w.id));
       return;
     }
     const sub = state.subtab.get(state.activeTab) || DEFAULT_SUB;
     if (sub === "terminal" || sub === "logs") {
       ensureLog(state.activeTab);
     }
-  }, 900);
+  }, LOG_POLL_MS);
 }
 
 // —— data wiring ——
@@ -1489,6 +1643,7 @@ function applyWorkersPayload(payload) {
   state.summaries = payload.summaries || [];
   state.groups = payload.groups || [];
   state.root = payload.root || state.root;
+  pruneRemovedWorkerCaches();
 
   // If a parent is selected, keep tabs in sync with related workers (add new, drop gone-from-filter only if we want)
   if (state.activeParent) {
@@ -1499,6 +1654,17 @@ function applyWorkersPayload(payload) {
   renderTabs();
   if (state.activeTab && !isMuxTab(state.activeTab)) {
     ensureDetail(state.activeTab);
+  } else if (state.activeTab) {
+    hydrateMuxLogs(state.activeTab);
+  }
+}
+
+function pruneRemovedWorkerCaches() {
+  const existing = new Set(state.summaries.map((s) => s.id));
+  for (const cache of [state.details, state.logs, state.formattedLogs, state.subtab, state.logFollow]) {
+    for (const id of cache.keys()) {
+      if (!isMuxTab(id) && !existing.has(id)) cache.delete(id);
+    }
   }
 }
 
@@ -1537,9 +1703,17 @@ function syncParentTabs() {
 
 function applyProcessesPayload(payload) {
   if (!payload) return;
+  const previousLive = (state.processes.supervisors || [])
+    .map((p) => p.workerId)
+    .sort()
+    .join("\n");
   state.processes = payload;
+  const nextLive = (state.processes.supervisors || [])
+    .map((p) => p.workerId)
+    .sort()
+    .join("\n");
   updateLiveBadge();
-  renderSidebar();
+  if (state.view === "processes" || previousLive !== nextLive) renderSidebar();
   if (state.activeTab) {
     const panel = panelEl(state.activeTab);
     const sub = isMuxTab(state.activeTab)
@@ -1596,6 +1770,14 @@ function bindControls() {
     applyProcessesPayload(p);
     hydrateOpenTabs();
   });
+  $("#btn-archive-old").addEventListener("click", archiveOldWorkers);
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      updateArchiveOldButton();
+      hydrateOpenTabs();
+    }
+  });
 
   window.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "w" && state.activeTab) {
@@ -1607,6 +1789,7 @@ function bindControls() {
 
 async function init() {
   bindControls();
+  startArchiveClock();
   startLogPolling();
 
   api.onWorkersUpdate(applyWorkersPayload);
