@@ -13,10 +13,52 @@ import {
 } from "../orchestrator/lib/archive.js";
 import { formatStreamLog } from "../desktop/renderer/stream-format.js";
 import { replaceDirectory } from "../desktop/scripts/install-utils.js";
+import {
+  buildSkillsInstallArgs,
+  detectInstalledSkillAgents,
+  resolveNpmInvocation,
+} from "../install-utils.js";
 
 const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const cli = path.join(repoRoot, "orchestrator", "orchestrator.js");
 const hour = 60 * 60 * 1000;
+
+test("Windows installer runs npm entry points with node instead of spawning .cmd files", () => {
+  const npmCli = String.raw`C:\node\node_modules\npm\bin\npm-cli.js`;
+  const invocation = resolveNpmInvocation("npm", ["install", "--silent"], {
+    platform: "win32",
+    execPath: String.raw`C:\node\node.exe`,
+    env: { PATH: String.raw`C:\node;C:\Windows\System32` },
+    existsSync: (candidate) => candidate === npmCli,
+  });
+
+  assert.deepEqual(invocation, {
+    command: String.raw`C:\node\node.exe`,
+    args: [npmCli, "install", "--silent"],
+  });
+});
+
+test("installer keeps native npm commands on non-Windows platforms", () => {
+  assert.deepEqual(
+    resolveNpmInvocation("npx", ["--yes", "skills"], { platform: "linux" }),
+    { command: "npx", args: ["--yes", "skills"] }
+  );
+});
+
+test("installer targets only worker agents whose CLIs are installed", () => {
+  const installedCommands = new Set(["claude", "codex", "devin"]);
+  const agents = detectInstalledSkillAgents((command) => installedCommands.has(command));
+  const args = buildSkillsInstallArgs("owner/repository", agents);
+
+  assert.deepEqual(agents, ["devin", "claude-code", "codex"]);
+  assert.deepEqual(args.slice(args.indexOf("--agent") + 1, args.indexOf("--global")), agents);
+  assert.equal(args.includes("*"), false);
+});
+
+test("installer skips skill installation when no worker CLI is installed", () => {
+  assert.deepEqual(detectInstalledSkillAgents(() => false), []);
+  assert.equal(buildSkillsInstallArgs("owner/repository", []), null);
+});
 
 test("archive age parser and terminal-state policy", () => {
   const now = Date.parse("2026-08-01T12:00:00.000Z");

@@ -6,14 +6,18 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  buildSkillsInstallArgs,
+  detectInstalledSkillAgents,
+  resolveNpmInvocation,
+} from "./install-utils.js";
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const home = os.homedir();
 const orchHome = process.env.ORCH_HOME || path.join(home, ".orchestrator");
 const binDir = process.env.BIN_DIR || path.join(home, ".local", "bin");
 const skillsSource = process.env.SKILLS_SOURCE || "hckaye/orchestrator";
 const isWindows = process.platform === "win32";
-const npmCommand = isWindows ? "npm.cmd" : "npm";
-const npxCommand = isWindows ? "npx.cmd" : "npx";
 
 function run(command, args, options = {}) {
   console.log(`$ ${command} ${args.join(" ")}`);
@@ -26,6 +30,11 @@ function run(command, args, options = {}) {
   if (result.error || result.status !== 0) {
     throw result.error || new Error(`${command} exited with ${result.status}`);
   }
+}
+
+function runNpm(command, args, options = {}) {
+  const invocation = resolveNpmInvocation(command, args);
+  run(invocation.command, invocation.args, options);
 }
 
 function copy(source, destination) {
@@ -94,12 +103,20 @@ function printPathHint() {
   }
 }
 
+function findCommand(cli) {
+  const command = isWindows ? "where.exe" : "which";
+  const result = spawnSync(command, [cli], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  if (result.status !== 0) return null;
+  return result.stdout.trim().split(/\r?\n/)[0] || null;
+}
+
 function verify() {
   const cliNames = ["devin", "claude", "codex", "cursor-agent", "grok"];
   for (const cli of cliNames) {
-    const command = isWindows ? "where.exe" : "which";
-    const result = spawnSync(command, [cli], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-    console.log(`  worker CLI ${cli}: ${result.status === 0 ? result.stdout.trim().split(/\r?\n/)[0] : "NOT FOUND"}`);
+    console.log(`  worker CLI ${cli}: ${findCommand(cli) || "NOT FOUND"}`);
   }
 }
 
@@ -125,13 +142,19 @@ try {
   updateConfig(configPath);
 
   console.log("==> Installing node dependencies (node-pty)");
-  run(npmCommand, ["install", "--silent", "--no-audit", "--no-fund"], { cwd: orchHome });
+  runNpm("npm", ["install", "--silent", "--no-audit", "--no-fund"], { cwd: orchHome });
   const shim = installCommandShim();
   addWindowsPath();
   console.log(`==> Installed CLI: ${shim}`);
 
-  console.log(`==> Installing skills from ${skillsSource}`);
-  run(npxCommand, ["--yes", "skills", "add", skillsSource, "--skill", "orchestrator", "--skill", "orchestrator-handoff", "--agent", "*", "--global", "--copy", "--full-depth", "--yes"]);
+  const skillAgents = detectInstalledSkillAgents((command) => Boolean(findCommand(command)));
+  const skillInstallArgs = buildSkillsInstallArgs(skillsSource, skillAgents);
+  if (skillInstallArgs) {
+    console.log(`==> Installing skills from ${skillsSource} for: ${skillAgents.join(", ")}`);
+    runNpm("npx", skillInstallArgs);
+  } else {
+    console.warn("==> Skipping skills: no supported worker CLIs were found in PATH");
+  }
   printPathHint();
   console.log("\n==> Verifying worker CLIs");
   verify();

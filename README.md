@@ -21,12 +21,12 @@ cd orchestrator
 - copies `orchestrator/` to `~/.orchestrator/` (preserves your existing `config.json`)
 - runs `npm install` for `node-pty`
 - installs an `orchestrator` command shim in `~/.local/bin/` (or `%USERPROFILE%\\.local\\bin\\` on Windows)
-- installs both skills globally with `npx skills add`, for all supported agent CLIs
+- installs both skills globally with `npx skills add`, only for worker CLIs found in `PATH`
 
 If you only need the skills, install them directly:
 
 ```bash
-npx skills add hckaye/orchestrator --skill orchestrator --skill orchestrator-handoff --agent '*' --global --copy --full-depth --yes
+npx skills add hckaye/orchestrator --skill orchestrator --skill orchestrator-handoff --global --copy --full-depth --yes
 ```
 
 Requires Node.js (developed on v25) and the worker CLIs you want to use (`devin`, `claude`, `codex`, `cursor-agent`, `grok`) installed and authenticated.
