@@ -195,6 +195,7 @@ const CLAUDE_MODELS = [
   { slug: "fable", label: "Fable (latest alias)", effort: "via --effort" },
   { slug: "claude-fable-5[1m]", label: "Fable 5 1M", effort: "via --effort" },
   { slug: "opus", label: "Opus (latest alias)", effort: "via --effort" },
+  { slug: "claude-opus-5", label: "Opus 5.0", effort: "via --effort" },
   { slug: "claude-opus-4-8[1m]", label: "Opus 4.8 1M", effort: "via --effort" },
   { slug: "sonnet", label: "Sonnet (latest alias)", effort: "via --effort" },
   { slug: "claude-sonnet-5[1m]", label: "Sonnet 5 1M", effort: "via --effort" },
@@ -202,6 +203,7 @@ const CLAUDE_MODELS = [
 
 const DEVIN_MODELS = [
   { slug: "swe-1-7", label: "SWE 1.7", effort: "n/a" },
+  { slug: "glm-5.2", label: "GLM 5.2", effort: "n/a" },
   { slug: "opus", label: "Opus (latest alias)", effort: "n/a" },
   { slug: "codex", label: "Codex (via Devin)", effort: "n/a" },
   { slug: "claude-opus-4.6", label: "Claude Opus 4.6 (via Devin)", effort: "n/a" },
@@ -210,6 +212,7 @@ const DEVIN_MODELS = [
 
 const CODEX_MODELS = [
   { slug: "gpt-5.6-luna", label: "GPT-5.6 Luna", effort: "via --effort" },
+  { slug: "gpt-5.6-sol", label: "GPT-5.6 Sol", effort: "via --effort" },
 ];
 
 export function listModels(cfg, typeFilter) {

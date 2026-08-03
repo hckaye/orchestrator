@@ -1,6 +1,6 @@
 {
   "name": "orchestrator-desktop",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "license": "MIT",
   "description": "Desktop UI for orchestrator worker sessions and live processes",
   "main": "electron/main.js",

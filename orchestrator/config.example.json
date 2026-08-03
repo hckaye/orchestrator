@@ -13,7 +13,7 @@
     "codex": {
       "cli": "codex",
       "defaultModel": "gpt-5.6-luna",
-      "defaultEffort": "xhigh",
+      "defaultEffort": "max",
       "sandbox": "workspace-write",
       "bypassApprovals": true,
       "printMode": true,
@@ -29,8 +29,8 @@
     },
     "claude": {
       "cli": "claude",
-      "defaultModel": "claude-fable-5[1m]",
-      "defaultEffort": "low",
+      "defaultModel": "claude-opus-5",
+      "defaultEffort": "high",
       "permissionMode": "bypassPermissions",
       "printMode": true,
       "extraArgs": []
@@ -46,7 +46,13 @@
   },
   "commander": {
     "defaultModel": "claude-fable-5[1m]",
-    "thinkingLevel": "low"
+    "thinkingLevel": "high",
+    "alternatives": [
+      {
+        "model": "gpt-5.6-sol",
+        "thinkingLevel": "xhigh"
+      }
+    ]
   },
   "promptSuffix": "\n\n## Constraints\n- Work only inside your assigned worktree.\n- Do NOT push or create PRs. Commit locally on your branch.\n- When finished, leave a short completion note as the last message: 'DONE: <summary>'.\n- If blocked, end with 'BLOCKED: <reason>'.",
   "resume": {

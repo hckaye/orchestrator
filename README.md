@@ -2,7 +2,7 @@
 
 Multi-CLI worker orchestration.
 
-The invoking agent or session acts as **commander**: it decomposes a task, dispatches implementation units to worker CLIs — Devin (default `swe-1-7`), Codex (default `gpt-5.6-luna` at xhigh), Cursor (default `composer-2.5`), Claude Code Fable 5 1M at low effort, or Grok (default `grok-4.5`) — each in its own git worktree, waits for completion, reviews diffs, sends feedback via `revise`, and merges everything into one integration branch.
+The invoking agent or session acts as **commander**: it classifies each implementation unit by risk, dispatches it to a suitable worker CLI in its own git worktree, waits for completion, reviews diffs, sends feedback via `revise`, and merges everything into one integration branch. The default selection policy is described below.
 
 This tool spawns each worker CLI directly (`devin -p`, `claude -p`, `codex exec`, `cursor-agent -p`, `grok -p`) — no daemon, no hang.
 
@@ -38,14 +38,30 @@ Requires Node.js (developed on v25) and the worker CLIs you want to use (`devin`
 | worker  | CLI            | default model       | effort                | permission          |
 |---------|----------------|---------------------|-----------------------|---------------------|
 | devin   | `devin`        | `swe-1-7`           | unsupported           | `dangerous` (auto)  |
-| codex   | `codex`        | `gpt-5.6-luna`      | `xhigh`               | bypass approvals    |
+| codex   | `codex`        | `gpt-5.6-luna`      | `max`                 | bypass approvals    |
 | cursor  | `cursor-agent` | `composer-2.5`      | no variants           | `--yolo`            |
-| claude  | `claude`       | `claude-fable-5[1m]`| `low`                | `bypassPermissions` |
+| claude  | `claude`       | `claude-opus-5`     | `high`                | `bypassPermissions` |
 | grok    | `grok`         | `grok-4.5`          | CLI default           | `always-approve`    |
 
-Commander default model: `claude-fable-5[1m]` at low effort. Integration branch template: `integrate/${task}`, base: `main`.
+Commander default model: `claude-fable-5[1m]` at high effort. `gpt-5.6-sol` at xhigh is the alternative Commander choice. Integration branch template: `integrate/${task}`, base: `main`.
 
 Override a worker's model per-spawn with `--model` and its effort with `--effort`.
+
+### Default model-selection policy
+
+Classify each unit before dispatching it. These are selection defaults, not a requirement to use every listed provider:
+
+| Unit | Default worker choices |
+|---|---|
+| Routine | Cursor Composer 2.5 Standard; Cursor Grok 4.5 high when some complexity is expected; Grok CLI Grok 4.5; Devin SWE-1.7; GLM 5.2 |
+| Wide-impact, important, or difficult | Codex GPT-5.6 Luna at `max`; Claude Code Opus 5.0 at `high` |
+| Irreversible if wrong | Codex GPT-5.6 Sol at `xhigh`; Claude Fable 5 at `high` |
+
+The irreversible tier is only for units whose failure cannot be recovered normally, such as frozen formats, ABI schemas, generated-contract changes, core soundness, or public ABI changes. Ordinary difficult work stays in the middle tier.
+
+Cursor Grok 4.5 high and Grok CLI Grok 4.5 are separate providers with independent parallel capacity, so both may be dispatched in the routine tier. Cursor Composer, Cursor Grok, and Grok CLI have no orchestrator-wide parallel limit. Devin and GLM 5.2 share a limit of five concurrent implementation workers across projects; reviewer use is not part of that limit.
+
+Use either Claude Fable 5 1M at `high` or GPT-5.6 Sol at `xhigh` for the Commander; Fable/high is the config default and Sol/xhigh is its alternative. The `commander` config entry is advisory because orchestrator does not launch or replace the invoking session, so select one of these models when starting the session when the host supports it. The three tiers above apply to dispatched workers, not to the Commander.
 
 ### Model and effort flags
 
@@ -68,10 +84,10 @@ Do not append `-xhigh` (or another effort name) to the model passed to `orchestr
 For example, the correct Codex command is:
 
 ```bash
-orchestrator spawn codex --model gpt-5.6-luna --effort xhigh -- "review the implementation"
+orchestrator spawn codex --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
 ```
 
-This passes `gpt-5.6-luna` and `model_reasoning_effort="xhigh"` separately to Codex. It does not pass a model named `gpt-5.6-luna-xhigh`.
+This passes `gpt-5.6-luna` and `model_reasoning_effort="max"` separately to Codex. It does not pass a model named `gpt-5.6-luna-max`.
 
 ## Usage (commander)
 
@@ -79,9 +95,11 @@ The skill (`skill/SKILL.md`) is the full reference. Quick form:
 
 ```bash
 orchestrator spawn devin  --model swe-1-7 -- "implement /api/orders in src/api/orders.ts"
-orchestrator spawn codex  --model gpt-5.6-luna --effort xhigh -- "add pytest for src/api/orders.ts"
+orchestrator spawn devin  --model glm-5.2 -- "implement a routine isolated unit"
+orchestrator spawn codex  --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
 orchestrator spawn cursor -- "build OrdersForm in src/ui/OrdersForm.tsx"
-orchestrator spawn claude --model 'claude-fable-5[1m]' --effort low -- "write orders migration"
+orchestrator spawn cursor --model grok-4.5 --effort high -- "implement a somewhat complex routine unit"
+orchestrator spawn claude --model claude-opus-5 --effort high -- "implement a difficult architecture change"
 orchestrator spawn grok   --model grok-4.5 -- "review the integration tests and fix failures"
 
 orchestrator ls

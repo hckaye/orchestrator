@@ -18,10 +18,35 @@ import {
   detectInstalledSkillAgents,
   resolveNpmInvocation,
 } from "../install-utils.js";
+import { pickWorkerRuntime } from "../orchestrator/lib/models.js";
 
 const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const cli = path.join(repoRoot, "orchestrator", "orchestrator.js");
 const hour = 60 * 60 * 1000;
+
+test("model-selection defaults expose the approved commander choices and worker tiers", () => {
+  const config = JSON.parse(fs.readFileSync(
+    path.join(repoRoot, "orchestrator", "config.example.json"),
+    "utf8"
+  ));
+
+  assert.deepEqual(pickWorkerRuntime(config, "codex"), {
+    model: "gpt-5.6-luna",
+    effort: "max",
+  });
+  assert.deepEqual(pickWorkerRuntime(config, "claude"), {
+    model: "claude-opus-5",
+    effort: "high",
+  });
+  assert.deepEqual(config.commander, {
+    defaultModel: "claude-fable-5[1m]",
+    thinkingLevel: "high",
+    alternatives: [{
+      model: "gpt-5.6-sol",
+      thinkingLevel: "xhigh",
+    }],
+  });
+});
 
 test("Windows installer runs npm entry points with node instead of spawning .cmd files", () => {
   const npmCli = String.raw`C:\node\node_modules\npm\bin\npm-cli.js`;
