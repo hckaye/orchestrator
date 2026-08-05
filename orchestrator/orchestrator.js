@@ -15,8 +15,9 @@ import {
   findArchiveCandidates,
   parseAgeMs,
 } from "./lib/archive.js";
+import { moduleDirectory } from "./lib/paths.js";
 
-const HERE = path.dirname(new URL(import.meta.url).pathname);
+const HERE = moduleDirectory(import.meta.url);
 
 function usage() {
   console.log(`orchestrator — multi-CLI worker orchestration

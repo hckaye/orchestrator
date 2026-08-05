@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   findArchiveCandidates,
@@ -19,10 +19,21 @@ import {
   resolveNpmInvocation,
 } from "../install-utils.js";
 import { pickWorkerRuntime } from "../orchestrator/lib/models.js";
+import { moduleDirectory } from "../orchestrator/lib/paths.js";
 
 const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const cli = path.join(repoRoot, "orchestrator", "orchestrator.js");
 const hour = 60 * 60 * 1000;
+
+test("module URLs resolve to native filesystem directories", () => {
+  const fixture = path.join(repoRoot, "directory with spaces", "entry.js");
+  const directory = moduleDirectory(pathToFileURL(fixture));
+
+  assert.equal(directory, path.dirname(fixture));
+  if (process.platform === "win32") {
+    assert.doesNotMatch(directory, /^\/[A-Za-z]:/);
+  }
+});
 
 test("model-selection defaults expose the approved commander choices and worker tiers", () => {
   const config = JSON.parse(fs.readFileSync(
