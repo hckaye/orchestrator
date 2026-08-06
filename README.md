@@ -2,7 +2,7 @@
 
 Multi-CLI worker orchestration.
 
-The invoking agent or session acts as **commander**: it classifies each implementation unit by risk, dispatches it to a suitable worker CLI in its own git worktree, waits for completion, reviews diffs, sends feedback via `revise`, and merges everything into one integration branch. The default selection policy is described below.
+The invoking agent or session acts as **commander**: it classifies each implementation unit by risk, dispatches it to a suitable worker CLI in its own git worktree, **pipelines** completions (reviews each worker as soon as it finishes while others still run — never barrier-waits the whole cohort), sends feedback via `revise`, and merges into one integration branch. The default selection policy is described below.
 
 This tool spawns each worker CLI directly (`devin -p`, `claude -p`, `codex exec`, `cursor-agent -p`, `grok -p`) — no daemon, no hang.
 
@@ -103,11 +103,12 @@ orchestrator spawn claude --model claude-opus-5 --effort high -- "implement a di
 orchestrator spawn grok   --model grok-4.5 -- "review the integration tests and fix failures"
 
 orchestrator ls
-orchestrator wait <id> --timeout 1800      # block until worker idle
+orchestrator wait <id> --timeout 120      # short wait in reconcile loop (prefer over barrier)
+orchestrator wait <id> --timeout 1800     # longer OK only with per-id background notify
 orchestrator pending                      # workers awaiting a response (interactive mode)
 orchestrator respond <id> "y"             # answer a permission/question prompt
 
-orchestrator review <id>                  # diff --stat vs base
+orchestrator review <id>                  # as soon as THIS worker finishes
 orchestrator diff   <id>                  # full diff vs base
 orchestrator revise <id> -- "fix X in src/foo.ts: handle empty list"  # resume + feedback
 orchestrator resume <id>                              # continue after rate limit / transient failure
@@ -115,17 +116,19 @@ orchestrator resume <id> -- "wait 2m then continue"   # optional custom continua
 orchestrator resumable                                # list workers that can be resumed
 orchestrator handoff <id>                             # print cross-agent handoff briefing
 orchestrator handoff-spawn cursor --from <id> -- "notes"  # new worker, same worktree
-orchestrator merge  <id>                  # merge worker branch into integration branch
-orchestrator integrate                    # merge all completed workers
+orchestrator merge  <id>                  # merge as soon as THIS worker passes review
+orchestrator archive <id>                 # REQUIRED after merge or unreusable failure (removes worktree)
+orchestrator integrate                    # merge all completed workers (optional batch)
 orchestrator finish  --base main          # push integration branch + open PR
-orchestrator archive <id>                 # remove worktree + state
-orchestrator archive --older-than 1d      # archive every finished worker at least one day old
+orchestrator archive --older-than 1d      # safety net for leftovers (not a substitute for per-worker archive)
 orchestrator archive --older-than 1d --dry-run  # preview without changing anything
 ```
 
+Commander monitoring (see `skill/SKILL.md` Phase 2): **spawn is not done** — after every dispatch you must arm `wait` (dispatch-only is the main notification miss). Keep a roster; on barrier hosts use one short `wait` + `ls` loop; never put multiple long waits in one tool block and only review after all return. Act on the first completion while others still run. **Always `archive` after successful merge**, and archive failed workers that are not reusable — do not leave spent worktrees.
+
 ### Review → revise cycle
 
-Workers are resumable. Each worker's CLI session ID is captured automatically at spawn and stored in state. `orchestrator revise <id> -- "<feedback>"` resumes the worker on the same session in the same worktree, applies your feedback, and re-commits. Repeat `review → revise → wait` until the diff satisfies acceptance criteria, then `merge`.
+Workers are resumable. Each worker's CLI session ID is captured automatically at spawn and stored in state. `orchestrator revise <id> -- "<feedback>"` resumes the worker on the same session in the same worktree, applies your feedback, and re-commits. Repeat `review → revise → wait` for **that** worker until acceptance criteria pass, then `merge` it — do not hold the merge until every parallel peer is done.
 
 If a worker stops early (rate limit, transient network error, etc.), `orchestrator resume <id>` continues on the same CLI session without review feedback. Failures matching known rate-limit/transient patterns are marked `failed-resumable`. Use `orchestrator resumable` to list resumable workers.
 

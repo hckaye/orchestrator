@@ -169,7 +169,10 @@ test("CLI previews and archives only finished workers older than one day", () =>
     { id: "old-completed", status: "completed", finishedAt: new Date(now - 25 * hour).toISOString() },
     { id: "legacy-failed", status: "failed", updatedAt: new Date(now - 30 * hour).toISOString() },
     { id: "recent-completed", status: "completed", finishedAt: new Date(now - 23 * hour).toISOString() },
-    { id: "old-running", status: "running", finishedAt: new Date(now - 48 * hour).toISOString() },
+    // Dead "running" (no live pid / heartbeat) is reconciled to failed, then archiveable.
+    { id: "old-running-dead", status: "running", pid: 2147483646, createdAt: new Date(now - 48 * hour).toISOString() },
+    // Truly live supervisor must never be archived.
+    { id: "live-running", status: "running", pid: process.pid, createdAt: new Date().toISOString() },
     { id: "missing-time", status: "completed" },
   ];
   for (const record of records) {
@@ -180,6 +183,8 @@ test("CLI previews and archives only finished workers older than one day", () =>
     path.join(workers, "old-completed.exit.json"),
     JSON.stringify({ status: "completed", finishedAt: new Date(now - 25 * hour).toISOString() })
   );
+  // Fresh heartbeat so live-running is not mistaken for a dead supervisor.
+  fs.writeFileSync(path.join(workers, "live-running.hb"), String(Date.now()));
 
   const env = { ...process.env, HOME: tempHome, USERPROFILE: tempHome };
   const preview = spawnSync(process.execPath, [cli, "archive", "--older-than", "1d", "--dry-run"], {
@@ -189,8 +194,9 @@ test("CLI previews and archives only finished workers older than one day", () =>
   assert.equal(preview.status, 0, preview.stderr);
   assert.match(preview.stdout, /old-completed/);
   assert.match(preview.stdout, /legacy-failed/);
+  assert.match(preview.stdout, /old-running-dead/);
   assert.doesNotMatch(preview.stdout, /recent-completed/);
-  assert.doesNotMatch(preview.stdout, /old-running/);
+  assert.doesNotMatch(preview.stdout, /live-running/);
   assert.doesNotMatch(preview.stdout, /undefined/);
   assert.equal(fs.existsSync(path.join(workers, "old-completed.json")), true);
 
@@ -199,11 +205,12 @@ test("CLI previews and archives only finished workers older than one day", () =>
     encoding: "utf8",
   });
   assert.equal(archive.status, 0, archive.stderr);
-  assert.match(archive.stdout, /archived 2 workers/);
+  assert.match(archive.stdout, /archived 3 workers/);
   assert.equal(fs.existsSync(path.join(workers, "old-completed.json")), false);
   assert.equal(fs.existsSync(path.join(workers, "legacy-failed.json")), false);
+  assert.equal(fs.existsSync(path.join(workers, "old-running-dead.json")), false);
   assert.equal(fs.existsSync(path.join(workers, "recent-completed.json")), true);
-  assert.equal(fs.existsSync(path.join(workers, "old-running.json")), true);
+  assert.equal(fs.existsSync(path.join(workers, "live-running.json")), true);
   assert.equal(fs.existsSync(path.join(workers, "missing-time.json")), true);
   // Archive intentionally retains logs for later inspection.
   assert.equal(fs.existsSync(path.join(logs, "old-completed.log")), true);

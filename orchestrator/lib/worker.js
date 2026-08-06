@@ -69,14 +69,25 @@ if (cmd.usePty && cfg.permissionBridge?.enabled) {
 
 // Any crash in this supervisor must still land the worker in a terminal
 // status, otherwise `orchestrator wait` spins on "running" forever.
+// finish() never throws and always process.exit; the trailing process.exit
+// here is a belt-and-suspenders guard if finish was already entered.
 process.on("uncaughtException", (e) => {
   try { log(`uncaught exception: ${e.stack || e.message}`); } catch {}
-  finish(1, null, e.message || String(e));
+  try { finish(1, null, e?.message || String(e)); } catch {}
+  process.exit(1);
 });
 process.on("unhandledRejection", (e) => {
   const msg = e?.stack || e?.message || String(e);
   try { log(`unhandled rejection: ${msg}`); } catch {}
-  finish(1, null, e?.message || String(e));
+  try { finish(1, null, e?.message || String(e)); } catch {}
+  process.exit(1);
+});
+
+// Disk-full on the log stream used to become an uncaught 'error' and leave
+// the worker stuck mid-finish. Swallow and finish cleanly instead.
+logStream.on("error", (e) => {
+  try { process.stderr.write(`[log-stream error] ${e.message}\n`); } catch {}
+  if (!finished) finish(1, null, e.message || String(e));
 });
 
 // A stale exit sentinel from a previous run would make `wait` return
@@ -92,6 +103,16 @@ function setState(patch) {
   const next = { ...cur, ...patch };
   state.writeState(id, next);
   return next;
+}
+
+/** setState that never throws — used on the terminal path under ENOSPC. */
+function setStateSafe(patch) {
+  try {
+    return setState(patch);
+  } catch (e) {
+    try { log(`setState failed: ${e.message}`); } catch {}
+    return null;
+  }
 }
 
 function tryExtractSessionId(text) {
@@ -163,9 +184,11 @@ try {
       env: { ...process.env, ...cmd.env },
     });
     child.onData((d) => {
-      process.stdout.write(d);
-      logStream.write(d);
-      handlePtyOutput(d);
+      try { process.stdout.write(d); } catch {}
+      try { logStream.write(d); } catch {}
+      try { handlePtyOutput(d); } catch (e) {
+        try { log(`pty output handler error: ${e.message}`); } catch {}
+      }
     });
     child.onExit(({ exitCode, signal }) => finish(exitCode, signal));
   } else {
@@ -175,40 +198,40 @@ try {
       env: { ...process.env, ...cmd.env },
       stdio: ["pipe", "pipe", "pipe"],
     });
-    let combined = "";
     child.stdout.on("data", (d) => {
-      process.stdout.write(d);
-      logStream.write(d);
+      try { process.stdout.write(d); } catch {}
+      try { logStream.write(d); } catch {}
       const text = d.toString();
-      combined = (combined + text).slice(-BUF_CAP);
-      tryExtractSessionId(text);
+      combinedBuf = (combinedBuf + text).slice(-BUF_CAP);
+      try { tryExtractSessionId(text); } catch (e) {
+        try { log(`session extract error: ${e.message}`); } catch {}
+      }
     });
     child.stderr.on("data", (d) => {
-      process.stderr.write(d);
-      logStream.write(d);
+      try { process.stderr.write(d); } catch {}
+      try { logStream.write(d); } catch {}
       const text = d.toString();
-      combined = (combined + text).slice(-BUF_CAP);
-      tryExtractSessionId(text);
+      combinedBuf = (combinedBuf + text).slice(-BUF_CAP);
+      try { tryExtractSessionId(text); } catch (e) {
+        try { log(`session extract error: ${e.message}`); } catch {}
+      }
     });
-    child.on("exit", (code, signal) => {
-      // capture tail as result
-      const tail = combined.split("\n").slice(-60).join("\n");
-      setState({ resultTail: tail });
-      finish(code, signal);
-    });
+    // Do NOT write state before finish — a setState ENOSPC here used to
+    // prevent finish() from running and leave status stuck at "running".
+    child.on("exit", (code, signal) => finish(code, signal));
     child.on("error", (e) => {
-      log(`spawn error: ${e.message}`);
+      try { log(`spawn error: ${e.message}`); } catch {}
       finish(1, null, e.message);
     });
     // `codex exec` treats a piped stdin as additional prompt input and waits for EOF before
     // starting the turn. Non-interactive workers already receive their full prompt in argv;
     // interactive workers use the PTY branch above when live input is required.
     if (st.type === "codex") {
-      child.stdin.end();
+      try { child.stdin.end(); } catch {}
     }
   }
 } catch (e) {
-  log(`spawn failed: ${e.stack || e.message}`);
+  try { log(`spawn failed: ${e.stack || e.message}`); } catch {}
   finish(1, null, e.message || String(e));
 }
 
@@ -234,54 +257,93 @@ function commitWorktree() {
 function finish(code, signal, errMsg) {
   if (finished) return;
   finished = true;
-  if (heartbeatTimer) clearInterval(heartbeatTimer);
-  const cur = state.readState(id) || st;
-  let status = code === 0 ? "completed" : "failed";
-  if (signal) status = "failed";
+  if (heartbeatTimer) {
+    try { clearInterval(heartbeatTimer); } catch {}
+    heartbeatTimer = null;
+  }
+  // Stop the child if it is still around (e.g. we are finishing due to a
+  // supervisor-side crash like ENOSPC while the CLI is mid-turn).
+  try {
+    if (child) {
+      if (typeof child.kill === "function") child.kill("SIGTERM");
+      else if (child.pid) process.kill(child.pid, "SIGTERM");
+    }
+  } catch {}
+
+  let cur = st;
+  try { cur = state.readState(id) || st; } catch { cur = st; }
+
+  const resultTail = (() => {
+    try {
+      return (combinedBuf || ptyDataBuf || "").split("\n").slice(-60).join("\n");
+    } catch {
+      return "";
+    }
+  })();
+
+  let status = code === 0 && !signal ? "completed" : "failed";
   let commitSha = null;
   let failureReason = null;
+  const errText = errMsg || null;
+
   if (status === "completed") {
-    commitSha = commitWorktree();
+    try { commitSha = commitWorktree(); } catch (e) {
+      try { log(`auto-commit threw: ${e.message}`); } catch {}
+    }
   } else {
-    const output = cur.resultTail || combinedBuf || "";
-    failureReason = detectFailureReason(output, cfg);
+    const output = [errText, resultTail, combinedBuf, ptyDataBuf].filter(Boolean).join("\n");
+    try { failureReason = detectFailureReason(output, cfg); } catch {}
     if (cur.sessionId && failureReason) {
       status = "failed-resumable";
     }
   }
+
+  const finishedAt = new Date().toISOString();
+  const exitPayload = {
+    status,
+    exitCode: code ?? (signal ? 1 : 0),
+    signal: signal || null,
+    finishedAt,
+    error: errText,
+    failureReason: failureReason || null,
+    resumable: !!cur.sessionId,
+    commitSha,
+  };
+
   // Write the exit sentinel FIRST — it is the durable record `wait` trusts.
-  // If anything below fails (state write race, crash), the result is not lost.
+  // Compact + ENOSPC fallback live in writeExit; never let a throw escape.
   try {
-    state.writeExit(id, {
-      status,
-      exitCode: code ?? 0,
-      signal: signal || null,
-      finishedAt: new Date().toISOString(),
-      error: errMsg || null,
-      failureReason: failureReason || null,
-      resumable: !!cur.sessionId,
-      commitSha,
-    });
+    state.writeExit(id, exitPayload);
   } catch (e) {
     try { log(`exit sentinel write failed: ${e.message}`); } catch {}
   }
   try { fs.unlinkSync(state.workerHeartbeat(id)); } catch {}
-  setState({
+
+  // Full state write is best-effort. Under ENOSPC this may fail; wait/ls still
+  // settle from the exit sentinel (or dead-supervisor detection).
+  setStateSafe({
     status,
-    exitCode: code ?? 0,
-    signal: signal || null,
-    finishedAt: new Date().toISOString(),
-    error: errMsg || null,
+    exitCode: exitPayload.exitCode,
+    signal: exitPayload.signal,
+    finishedAt,
+    error: errText,
     failureReason: failureReason || null,
     resumable: !!cur.sessionId,
     commitSha,
+    resultTail: resultTail || null,
+    pid: null,
   });
-  log(`finished status=${status} code=${code} signal=${signal} reason=${failureReason || "-"} commit=${commitSha}`);
-  logStream.end();
-  // close sock
+
+  try {
+    log(`finished status=${status} code=${code} signal=${signal} reason=${failureReason || "-"} commit=${commitSha}`);
+  } catch {}
+  try { logStream.end(); } catch {}
   try { server?.close(); } catch {}
   try { fs.unlinkSync(state.workerSock(id)); } catch {}
-  process.exit(code === 0 ? 0 : 1);
+
+  // Always terminate this process. A surviving supervisor with status still
+  // "running" makes `wait` hang forever via pidAlive.
+  process.exit(status === "completed" ? 0 : 1);
 }
 
 function canWriteToWorker() {

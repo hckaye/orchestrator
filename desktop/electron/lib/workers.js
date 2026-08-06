@@ -8,6 +8,8 @@ import {
   workerFile,
   workerLog,
   workerSock,
+  workerHeartbeat,
+  workerExit,
 } from "./paths.js";
 
 function readdirSafe(dir) {
@@ -35,6 +37,8 @@ const ACTIVE = new Set([
 ]);
 
 export const DEFAULT_ARCHIVE_AGE_MS = 24 * 60 * 60 * 1000;
+const HEARTBEAT_STALE_MS = 15000;
+const PENDING_GRACE_MS = 60000;
 
 export function isTerminal(status) {
   return TERMINAL.has(status);
@@ -42,6 +46,120 @@ export function isTerminal(status) {
 
 export function isActive(status) {
   return ACTIVE.has(status);
+}
+
+function pidAlive(pid) {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e?.code === "EPERM";
+  }
+}
+
+function heartbeatAge(id) {
+  try {
+    return Date.now() - fs.statSync(workerHeartbeat(id)).mtimeMs;
+  } catch {
+    return Infinity;
+  }
+}
+
+function readExit(id) {
+  try {
+    return JSON.parse(fs.readFileSync(workerExit(id), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeStateRaw(id, state) {
+  ensureDirs();
+  const full = { ...state, updatedAt: new Date().toISOString() };
+  const file = workerFile(id);
+  const body = JSON.stringify(full, null, 2);
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(tmp, body);
+    fs.renameSync(tmp, file);
+  } catch {
+    try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+    try { fs.writeFileSync(file, body); } catch { /* ignore */ }
+  }
+}
+
+function writeExitRaw(id, obj) {
+  const file = workerExit(id);
+  const body = JSON.stringify(obj);
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(tmp, body);
+    fs.renameSync(tmp, file);
+  } catch {
+    try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+    try { fs.writeFileSync(file, body); } catch { /* ignore */ }
+  }
+}
+
+/**
+ * If state says running but the supervisor already finished (exit sentinel)
+ * or died without recording a result (ENOSPC etc.), fold that into a terminal
+ * status so the desktop never shows a dead worker as Running forever.
+ */
+export function reconcileState(state) {
+  if (!state?.id || isTerminal(state.status)) return state;
+
+  const exit = readExit(state.id);
+  if (exit?.status && isTerminal(exit.status)) {
+    const next = { ...state, ...exit, pid: null };
+    writeStateRaw(state.id, next);
+    return next;
+  }
+
+  let alive = false;
+  if (state.pid) {
+    alive = heartbeatAge(state.id) < HEARTBEAT_STALE_MS || pidAlive(state.pid);
+  } else if (state.status === "pending") {
+    const born = new Date(state.createdAt || 0).getTime();
+    alive = Number.isFinite(born) && Date.now() - born < PENDING_GRACE_MS;
+  } else {
+    alive = heartbeatAge(state.id) < HEARTBEAT_STALE_MS;
+  }
+  if (alive) return state;
+
+  let finishedAt = state.finishedAt || null;
+  if (!finishedAt) {
+    try {
+      finishedAt = new Date(fs.statSync(workerHeartbeat(state.id)).mtimeMs).toISOString();
+    } catch {
+      finishedAt =
+        state.startedAt || state.updatedAt || state.createdAt || new Date().toISOString();
+    }
+  }
+  const next = {
+    ...state,
+    pid: null,
+    status: state.sessionId ? "failed-resumable" : "failed",
+    exitCode: state.exitCode ?? 1,
+    failureReason: state.failureReason || "supervisor-died",
+    error: state.error || "worker supervisor exited without recording a result",
+    finishedAt,
+    resumable: !!state.sessionId,
+  };
+  writeExitRaw(state.id, {
+    status: next.status,
+    exitCode: next.exitCode,
+    signal: next.signal || null,
+    finishedAt,
+    error: next.error,
+    failureReason: next.failureReason,
+    resumable: next.resumable,
+    commitSha: next.commitSha || null,
+  });
+  writeStateRaw(state.id, next);
+  try { fs.unlinkSync(workerHeartbeat(state.id)); } catch { /* ignore */ }
+  return next;
 }
 
 export function terminalTimestamp(state) {
@@ -74,7 +192,8 @@ export function listArchiveCandidates(options = {}) {
 
 export function readState(id) {
   try {
-    return JSON.parse(fs.readFileSync(workerFile(id), "utf8"));
+    const raw = JSON.parse(fs.readFileSync(workerFile(id), "utf8"));
+    return reconcileState(raw);
   } catch {
     return null;
   }
@@ -314,13 +433,13 @@ export class WorkerWatcher extends EventEmitter {
           return;
         }
         // Heartbeats change every few seconds and logs live in another
-        // directory. Only state JSON changes should rebuild the worker list.
-        if (
-          filename.endsWith(".json") &&
-          !filename.endsWith(".exit.json") &&
-          !filename.includes(".tmp")
-        ) {
-          this._dirty.add(path.basename(filename, ".json"));
+        // directory. State JSON and exit sentinels should rebuild the list
+        // (exit sentinels are how ENOSPC-crashed supervisors report results).
+        if (filename.endsWith(".json") && !filename.includes(".tmp")) {
+          const id = filename.endsWith(".exit.json")
+            ? path.basename(filename, ".exit.json")
+            : path.basename(filename, ".json");
+          this._dirty.add(id);
           this._schedule();
         }
       });

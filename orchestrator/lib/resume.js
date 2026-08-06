@@ -8,9 +8,24 @@ export const DEFAULT_RATE_LIMIT_PATTERNS = [
   "429",
   "quota exceeded",
   "usage limit",
+  "hit your usage limit",
+  "purchase more credits",
+  "out of credits",
+  "insufficient credits",
+  "insufficient quota",
   "capacity",
   "overloaded",
   "resource_exhausted",
+];
+
+export const DEFAULT_RESOURCE_PATTERNS = [
+  "enospc",
+  "no space left on device",
+  "disk full",
+  "disk quota exceeded",
+  "edquota",
+  "no space left",
+  "out of disk",
 ];
 
 export const DEFAULT_TRANSIENT_PATTERNS = [
@@ -28,6 +43,7 @@ export const DEFAULT_TRANSIENT_PATTERNS = [
 export function failurePatterns(cfg) {
   return {
     rateLimit: cfg.resume?.rateLimitPatterns || DEFAULT_RATE_LIMIT_PATTERNS,
+    resource: cfg.resume?.resourcePatterns || DEFAULT_RESOURCE_PATTERNS,
     transient: cfg.resume?.transientPatterns || DEFAULT_TRANSIENT_PATTERNS,
   };
 }
@@ -52,7 +68,10 @@ function matchesAny(text, patterns) {
 
 export function detectFailureReason(text, cfg = {}) {
   if (!text) return null;
-  const { rateLimit, transient } = failurePatterns(cfg);
+  const { rateLimit, resource, transient } = failurePatterns(cfg);
+  // Resource (ENOSPC / disk quota) before rate-limit so "disk quota exceeded"
+  // is not swallowed by the generic API "quota exceeded" pattern.
+  if (matchesAny(text, resource)) return "resource";
   if (matchesAny(text, rateLimit)) return "rate-limit";
   if (matchesAny(text, transient)) return "transient";
   return null;
@@ -84,6 +103,13 @@ export function buildContinuationPrompt(state, cfg, userMessage) {
     return (
       cfg.resume?.rateLimitPrompt ||
       "Your previous run stopped due to a rate limit or quota error. Continue the original task from where you left off. Do not restart from scratch. Complete any remaining work, commit locally, and end with DONE: or BLOCKED:."
+    );
+  }
+
+  if (reason === "resource") {
+    return (
+      cfg.resume?.resourcePrompt ||
+      "Your previous run stopped because the machine ran out of disk space or another local resource. Free space if needed, then continue the original task from where you left off. Do not restart from scratch. Complete any remaining work, commit locally, and end with DONE: or BLOCKED:."
     );
   }
 

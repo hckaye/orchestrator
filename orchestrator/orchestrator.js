@@ -132,19 +132,18 @@ async function isSupervisorAlive(id) {
   return !!r.ok;
 }
 
-const TERMINAL_STATUSES = ["completed", "failed", "failed-resumable", "merged", "archived", "handed-off"];
+const TERMINAL_STATUSES = state.TERMINAL_STATUSES;
 
-// Read a worker's state, folding in the exit sentinel if the supervisor
-// finished but its final state write was lost. Keeps ls/status/resumable
-// truthful even when no `wait` is running to do the reconciliation.
-function readReconciledState(id) {
-  const s = state.readState(id);
-  if (!s || TERMINAL_STATUSES.includes(s.status)) return s;
-  const exit = state.readExit(id);
-  if (!exit?.status) return s;
-  const next = { ...s, ...exit, pid: null };
-  state.writeState(id, next);
-  return next;
+// Fold exit sentinel + dead-supervisor into state so ls/status/resumable
+// never report a dead run as still "running".
+function readReconciledState(id, opts = {}) {
+  return state.reconcileWorkerState(id, {
+    write: true,
+    // ls/status should mark dead supervisors; wait uses its own multi-check
+    // path for the markDead case so a mid-restart blip does not false-fail.
+    markDead: opts.markDead !== false,
+    ...opts,
+  });
 }
 
 function sendSock(id, msg) {
@@ -314,8 +313,8 @@ async function main() {
         process.exit(1);
       }
       if (s.status === "running" && !args.opts.force) {
-        const alive = s.pid
-          ? state.heartbeatAge(id) < 15000 || state.pidAlive(s.pid)
+        const alive = s.pid || s.status === "pending"
+          ? state.isSupervisorAliveLocal(s)
           : await isSupervisorAlive(id);
         if (alive) {
           console.error("worker supervisor still running. Use --force if you believe it is stuck.");
@@ -440,22 +439,15 @@ async function main() {
       const id = args._[0];
       const timeout = (parseInt(args.opts.timeout, 10) || 0) * 1000;
       const start = Date.now();
-      const TERMINAL = ["completed", "failed", "failed-resumable", "merged", "archived", "handed-off"];
-      // If the state file says running but an exit sentinel exists, the
-      // supervisor finished but its final state write was lost — the sentinel
-      // is the durable record, so reconcile from it.
-      const settleFromExit = (s, exit) => {
-        if (!TERMINAL.includes(s.status)) {
-          state.writeState(id, { ...s, ...exit, pid: null });
-        }
-        console.log(exit.status);
-        process.exit(0);
-      };
+      const TERMINAL = TERMINAL_STATUSES;
       let missingReads = 0;
       let deadChecks = 0;
       // eslint-disable-next-line no-constant-condition
       while (true) {
-        const s = state.readState(id);
+        // Always fold a durable exit sentinel into state immediately. Do not
+        // markDead here — a single missed heartbeat during a restart should
+        // not flip the worker to failed; require consecutive dead checks.
+        let s = state.reconcileWorkerState(id, { write: true, markDead: false });
         if (!s) {
           // tolerate a transient unreadable state file before giving up
           if (++missingReads >= 3) { console.error("not found"); process.exit(1); }
@@ -464,39 +456,24 @@ async function main() {
         }
         missingReads = 0;
         if (TERMINAL.includes(s.status)) { console.log(s.status); process.exit(0); }
-        const exit = state.readExit(id);
-        if (exit?.status) settleFromExit(s, exit);
+
         // liveness: the supervisor records its pid and touches a heartbeat
         // file every 3s. It is alive if either signal holds (heartbeat covers
         // pid reuse; pid covers a briefly-blocked event loop). Only when both
         // are gone — and still no exit sentinel — is the worker declared dead.
+        // Pre-pid-era workers fall back to the IPC socket ping.
         let alive;
-        if (s.pid) {
-          alive = state.heartbeatAge(id) < 15000 || state.pidAlive(s.pid);
-        } else if (s.status === "pending") {
-          // supervisor not up yet; give it a startup grace period
-          const born = new Date(s.createdAt || 0).getTime();
-          alive = Date.now() - born < 60000;
+        if (s.pid || s.status === "pending") {
+          alive = state.isSupervisorAliveLocal(s);
         } else {
-          // pre-pid-era worker: fall back to the IPC socket ping
-          alive = await isSupervisorAlive(id);
+          alive = state.heartbeatAge(id) < 15000 || (await isSupervisorAlive(id));
         }
         if (alive) {
           deadChecks = 0;
         } else if (++deadChecks >= 3) {
           // one last look — the supervisor may have exited cleanly between checks
-          const lastExit = state.readExit(id);
-          if (lastExit?.status) settleFromExit(s, lastExit);
-          state.writeState(id, {
-            ...s,
-            pid: null,
-            status: "failed",
-            failureReason: s.failureReason || "supervisor-died",
-            error: s.error || "worker supervisor exited without recording a result",
-            finishedAt: new Date().toISOString(),
-            resumable: !!s.sessionId,
-          });
-          console.log("failed");
+          s = state.reconcileWorkerState(id, { write: true, markDead: true });
+          console.log(s?.status && TERMINAL.includes(s.status) ? s.status : "failed");
           process.exit(0);
         }
         if (timeout && Date.now() - start > timeout) { console.log("timeout"); process.exit(124); }

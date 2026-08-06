@@ -29,3 +29,11 @@ export function workerSock(id) {
 export function workerLog(id) {
   return path.join(LOGS_DIR, `${id}.log`);
 }
+
+export function workerHeartbeat(id) {
+  return path.join(WORKERS_DIR, `${id}.hb`);
+}
+
+export function workerExit(id) {
+  return path.join(WORKERS_DIR, `${id}.exit.json`);
+}
