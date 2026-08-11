@@ -8,6 +8,7 @@ import {
   workerFile,
   workerLog,
   workerSock,
+  workerSockUsesFilesystem,
   workerHeartbeat,
   workerExit,
 } from "./paths.js";
@@ -239,7 +240,11 @@ export function summarize(state) {
     startedAt: state.startedAt || null,
     updatedAt: state.updatedAt || null,
     finishedAt: state.finishedAt || null,
-    hasSock: fs.existsSync(workerSock(state.id)),
+    // Windows named pipes are not filesystem entries. Active state is the
+    // synchronous UI hint there; actions verify liveness with a real ping.
+    hasSock: workerSockUsesFilesystem()
+      ? fs.existsSync(workerSock(state.id))
+      : isActive(state.status),
     hasLog: fs.existsSync(workerLog(state.id)),
     active: isActive(state.status),
     terminal: isTerminal(state.status),

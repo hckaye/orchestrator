@@ -212,7 +212,7 @@ function archiveWorkerState(id, workerState = null) {
     git.removeWorktree(s.repo, slug);
   }
   try { fs.unlinkSync(state.workerFile(id)); } catch {}
-  try { fs.unlinkSync(state.workerSock(id)); } catch {}
+  state.removeWorkerSock(id);
   state.clearRunArtifacts(id);
   return true;
 }
@@ -401,7 +401,7 @@ async function main() {
       fs.appendFileSync(workerLog, `\n=== orchestrator handoff-spawn ${id} from=${fromId} pid=${child.pid} ===\n`);
       if (args.opts["archive-source"]) {
         state.writeState(fromId, { ...source, status: "handed-off", handedOffTo: id });
-        try { fs.unlinkSync(state.workerSock(fromId)); } catch {}
+        state.removeWorkerSock(fromId);
       }
       console.log(id);
       break;

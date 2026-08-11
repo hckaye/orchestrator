@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import os from "node:os";
-import { workerSock, workerLog, workerFile, ROOT } from "./paths.js";
+import { removeWorkerSock, workerSock, workerLog, workerFile, ROOT } from "./paths.js";
 import { buildOrchestratorInvocation } from "./orchestrator-process.js";
 import {
   DEFAULT_ARCHIVE_AGE_MS,
@@ -42,10 +42,6 @@ function sendSock(id, msg, timeoutMs = 5000) {
       resolve(v);
     };
     const sock = workerSock(id);
-    if (!fs.existsSync(sock)) {
-      settle({ ok: false, error: "no supervisor socket" });
-      return;
-    }
     const conn = net.connect(sock, () => {
       conn.write(JSON.stringify(msg) + "\n");
     });
@@ -306,11 +302,7 @@ export async function forceFailWorker(id, { reason = "desktop-force-kill", silen
     cur = next;
   }
 
-  try {
-    fs.unlinkSync(workerSock(id));
-  } catch {
-    /* ignore */
-  }
+  removeWorkerSock(id);
 
   if (!silent) appendDesktopLog(id, `force-fail reason=${reason}`);
   invalidateSummaryCache([id]);
@@ -328,7 +320,8 @@ export async function archiveWorker(id) {
   if (!st) return { ok: false, error: "worker not found" };
 
   // Kill if still live so archive doesn't leave orphan processes
-  if (!TERMINAL.has(st.status) || st.status === "pending" || isLiveSock(id)) {
+  const live = await sendSock(id, { cmd: "ping" }, 750);
+  if (!TERMINAL.has(st.status) || live.ok) {
     await forceFailWorker(id, { reason: "desktop-archive-preempt", silent: true });
     await new Promise((r) => setTimeout(r, 300));
   }
@@ -384,10 +377,6 @@ export async function archiveOldWorkers({
     failed,
     matched: candidates.length,
   };
-}
-
-function isLiveSock(id) {
-  return fs.existsSync(workerSock(id));
 }
 
 export async function pingWorker(id) {

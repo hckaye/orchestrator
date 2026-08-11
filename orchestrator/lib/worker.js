@@ -339,7 +339,7 @@ function finish(code, signal, errMsg) {
   } catch {}
   try { logStream.end(); } catch {}
   try { server?.close(); } catch {}
-  try { fs.unlinkSync(state.workerSock(id)); } catch {}
+  state.removeWorkerSock(id);
 
   // Always terminate this process. A surviving supervisor with status still
   // "running" makes `wait` hang forever via pidAlive.
@@ -417,9 +417,9 @@ const server = net.createServer((conn) => {
     }
   });
 });
-try { fs.unlinkSync(state.workerSock(id)); } catch {}
-server.listen(state.workerSock(id));
 server.on("error", (e) => log(`sock error: ${e.message}`));
+state.removeWorkerSock(id);
+server.listen(state.workerSock(id));
 
 // keep alive
 process.on("SIGTERM", () => { try { child?.kill("SIGTERM"); } catch {} });

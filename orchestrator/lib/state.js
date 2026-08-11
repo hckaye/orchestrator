@@ -32,8 +32,20 @@ export function workerFile(id) {
   return path.join(WORKERS_DIR, `${id}.json`);
 }
 
-export function workerSock(id) {
-  return path.join(WORKERS_DIR, `${id}.sock`);
+export function workerSock(id, { platform = process.platform, workersDir = WORKERS_DIR } = {}) {
+  if (platform === "win32") {
+    return `\\\\.\\pipe\\orchestrator-${id}`;
+  }
+  return path.join(workersDir, `${id}.sock`);
+}
+
+export function workerSockUsesFilesystem({ platform = process.platform } = {}) {
+  return platform !== "win32";
+}
+
+export function removeWorkerSock(id, options = {}) {
+  if (!workerSockUsesFilesystem(options)) return;
+  try { fs.unlinkSync(workerSock(id, options)); } catch {}
 }
 
 export function workerLog(id) {
