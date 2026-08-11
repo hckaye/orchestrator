@@ -1,10 +1,15 @@
 # orchestrator
 
+> [!WARNING]
+> This tool runs Agent CLIs with permission checks bypassed by default. Use it in a safely isolated environment, or run it at your own risk.
+
+[English](README.md) | [日本語](README.ja.md)
+
 Multi-CLI worker orchestration.
 
-The invoking agent or session acts as **commander**: it classifies each implementation unit by risk, dispatches it to a suitable worker CLI in its own git worktree, **pipelines** completions (reviews each worker as soon as it finishes while others still run — never barrier-waits the whole cohort), sends feedback via `revise`, and merges into one integration branch. The default selection policy is described below.
+The invoking agent or session acts as **commander**: it classifies each implementation unit by risk, dispatches it to a suitable worker CLI in its own git worktree, **pipelines** completions (reviews each worker as soon as it finishes while others still run instead of barrier-waiting for the whole cohort), sends feedback via `revise`, and merges into one integration branch. The default selection policy is described below.
 
-This tool spawns each worker CLI directly (`devin -p`, `claude -p`, `codex exec`, `cursor-agent -p`, `grok -p`) — no daemon, no hang.
+This tool spawns each worker CLI directly (`devin -p`, `claude -p`, `codex exec`, `cursor-agent -p`, `grok -p`). It does not use a daemon, so there is no daemon hang.
 
 ## Install
 
@@ -33,7 +38,7 @@ Requires Node.js (developed on v25) and the worker CLIs you want to use (`devin`
 
 ## Config
 
-`~/.orchestrator/config.json` — defaults:
+Defaults in `~/.orchestrator/config.json`:
 
 | worker  | CLI            | default model       | effort                | permission          |
 |---------|----------------|---------------------|-----------------------|---------------------|
@@ -124,11 +129,11 @@ orchestrator archive --older-than 1d      # safety net for leftovers (not a subs
 orchestrator archive --older-than 1d --dry-run  # preview without changing anything
 ```
 
-Commander monitoring (see `skill/SKILL.md` Phase 2): **spawn is not done** — after every dispatch you must arm `wait` (dispatch-only is the main notification miss). Keep a roster; on barrier hosts use one short `wait` + `ls` loop; never put multiple long waits in one tool block and only review after all return. Act on the first completion while others still run. **Always `archive` after successful merge**, and archive failed workers that are not reusable — do not leave spent worktrees.
+Commander monitoring (see `skill/SKILL.md` Phase 2): **spawn is not done**. After every dispatch you must arm `wait` (dispatch-only is the main notification miss). Keep a roster; on barrier hosts use one short `wait` + `ls` loop; never put multiple long waits in one tool block and only review after all return. Act on the first completion while others still run. **Always `archive` after successful merge**, and archive failed workers that are not reusable. Do not leave spent worktrees.
 
 ### Review → revise cycle
 
-Workers are resumable. Each worker's CLI session ID is captured automatically at spawn and stored in state. `orchestrator revise <id> -- "<feedback>"` resumes the worker on the same session in the same worktree, applies your feedback, and re-commits. Repeat `review → revise → wait` for **that** worker until acceptance criteria pass, then `merge` it — do not hold the merge until every parallel peer is done.
+Workers are resumable. Each worker's CLI session ID is captured automatically at spawn and stored in state. `orchestrator revise <id> -- "<feedback>"` resumes the worker on the same session in the same worktree, applies your feedback, and re-commits. Repeat `review → revise → wait` for **that** worker until acceptance criteria pass, then `merge` it without waiting for every parallel peer to finish.
 
 If a worker stops early (rate limit, transient network error, etc.), `orchestrator resume <id>` continues on the same CLI session without review feedback. Failures matching known rate-limit/transient patterns are marked `failed-resumable`. Use `orchestrator resumable` to list resumable workers.
 
@@ -141,12 +146,12 @@ orchestrator handoff <source-id>                      # preview briefing
 orchestrator handoff-spawn codex --from <source-id>   # spawn receiver
 ```
 
-See skill `orchestrator-handoff` for the full workflow. Session memory does not transfer — only git state and reconstructed context.
+See skill `orchestrator-handoff` for the full workflow. Session memory does not transfer; only git state and reconstructed context are passed to the new worker.
 
 ### Permission bridge (hybrid)
 
 - **Default (auto-approve):** workers run in `-p`/print mode with auto-approve flags. No prompts, no hang risk. Use for fire-and-forget implementation.
-- **Interactive (respond-able):** `--interactive` at spawn runs the worker in a PTY; the supervisor detects permission/question prompts and flips the worker to `awaiting-permission` / `awaiting-question`. Answer via `orchestrator respond <id> <answer>`. Use only when you want to gate a worker's actions — PTY prompt detection is best-effort.
+- **Interactive (respond-able):** `--interactive` at spawn runs the worker in a PTY; the supervisor detects permission/question prompts and flips the worker to `awaiting-permission` / `awaiting-question`. Answer via `orchestrator respond <id> <answer>`. Use only when you want to gate a worker's actions. PTY prompt detection is best-effort.
 
 ## Desktop UI
 
@@ -196,5 +201,5 @@ install.ps1              Windows PowerShell CLI installer entry point
 ## Notes
 
 - Workers commit automatically on completion (so merge always has the diff).
-- Workers are one worktree each, branched off the configured base. The commander's working tree is never disturbed — merges happen in a temporary integration worktree.
+- Workers are one worktree each, branched off the configured base. The commander's working tree is never disturbed because merges happen in a temporary integration worktree.
 - No daemon. Each `spawn` / `revise` launches a detached `worker.js` process that owns one CLI subprocess and exits when the CLI exits.
