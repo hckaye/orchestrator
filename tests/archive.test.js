@@ -20,6 +20,7 @@ import {
 } from "../install-utils.js";
 import { pickWorkerRuntime } from "../orchestrator/lib/models.js";
 import { moduleDirectory } from "../orchestrator/lib/paths.js";
+import { buildOrchestratorInvocation } from "../desktop/electron/lib/orchestrator-process.js";
 
 const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const cli = path.join(repoRoot, "orchestrator", "orchestrator.js");
@@ -33,6 +34,32 @@ test("module URLs resolve to native filesystem directories", () => {
   if (process.platform === "win32") {
     assert.doesNotMatch(directory, /^\/[A-Za-z]:/);
   }
+});
+
+test("packaged Electron runs the installed orchestrator script as Node", () => {
+  const env = { PATH: "/usr/bin" };
+  const invocation = buildOrchestratorInvocation(
+    "/home/test/.orchestrator/orchestrator.js",
+    ["archive", "--older-than", "1d"],
+    {
+      execPath: "/opt/Orchestrator/Orchestrator",
+      env,
+      electron: true,
+    }
+  );
+
+  assert.equal(invocation.command, "/opt/Orchestrator/Orchestrator");
+  assert.deepEqual(invocation.args, [
+    "/home/test/.orchestrator/orchestrator.js",
+    "archive",
+    "--older-than",
+    "1d",
+  ]);
+  assert.deepEqual(invocation.env, {
+    PATH: "/usr/bin",
+    ELECTRON_RUN_AS_NODE: "1",
+  });
+  assert.equal("ELECTRON_RUN_AS_NODE" in env, false);
 });
 
 test("model-selection defaults expose the approved commander choices and worker tiers", () => {

@@ -6,6 +6,7 @@ import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import os from "node:os";
 import { workerSock, workerLog, workerFile, ROOT } from "./paths.js";
+import { buildOrchestratorInvocation } from "./orchestrator-process.js";
 import {
   DEFAULT_ARCHIVE_AGE_MS,
   isArchiveCandidate,
@@ -105,11 +106,9 @@ function runOrchestrator(argv, { timeoutMs = 60000 } = {}) {
       resolve({ ok: false, error: "orchestrator CLI not found under ~/.orchestrator" });
       return;
     }
-    const isJs = bin.endsWith(".js");
-    const cmd = isJs ? process.execPath : bin;
-    const args = isJs ? [bin, ...argv] : argv;
-    const child = spawn(cmd, args, {
-      env: process.env,
+    const invocation = buildOrchestratorInvocation(bin, argv);
+    const child = spawn(invocation.command, invocation.args, {
+      env: invocation.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
@@ -120,21 +119,23 @@ function runOrchestrator(argv, { timeoutMs = 60000 } = {}) {
     child.stderr.on("data", (d) => {
       stderr += d.toString();
     });
-    const timer = setTimeout(() => {
-      try {
-        child.kill("SIGTERM");
-      } catch {
-        /* ignore */
-      }
-      resolve({
-        ok: false,
-        error: "timeout",
-        stdout,
-        stderr,
-      });
-    }, timeoutMs);
+    const timer = timeoutMs > 0
+      ? setTimeout(() => {
+          try {
+            child.kill("SIGTERM");
+          } catch {
+            /* ignore */
+          }
+          resolve({
+            ok: false,
+            error: "timeout",
+            stdout,
+            stderr,
+          });
+        }, timeoutMs)
+      : null;
     child.on("close", (code) => {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       resolve({
         ok: code === 0,
         code,
@@ -144,7 +145,7 @@ function runOrchestrator(argv, { timeoutMs = 60000 } = {}) {
       });
     });
     child.on("error", (e) => {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       resolve({ ok: false, error: e.message });
     });
   });
@@ -345,26 +346,39 @@ export async function archiveOldWorkers({
   olderThanMs = DEFAULT_ARCHIVE_AGE_MS,
 } = {}) {
   const candidates = listArchiveCandidates({ olderThanMs });
+  if (!candidates.length) {
+    return { ok: true, archived: [], skipped: [], failed: [], matched: 0 };
+  }
+
+  // Run the CLI once for the whole batch. Starting one process per worker is
+  // unnecessarily slow for installations with hundreds of old workers.
+  const result = await runOrchestrator([
+    "archive",
+    "--older-than",
+    `${olderThanMs}ms`,
+  ], { timeoutMs: 0 });
+
   const archived = [];
   const skipped = [];
   const failed = [];
 
   for (const candidate of candidates) {
-    // Selection and deletion are deliberately separate. A worker may have
-    // resumed after the preview, so verify the current state again.
     const current = readState(candidate.id);
-    if (!isArchiveCandidate(current, { olderThanMs })) {
+    if (!current) {
+      archived.push(candidate.id);
+    } else if (!isArchiveCandidate(current, { olderThanMs })) {
       skipped.push(candidate.id);
-      continue;
+    } else {
+      failed.push({
+        id: candidate.id,
+        error: result.error || result.stderr || "archive command did not remove the worker",
+      });
     }
-    const result = await archiveWorker(candidate.id);
-    if (result.ok) archived.push(candidate.id);
-    else failed.push({ id: candidate.id, error: result.error || "archive failed" });
   }
 
   invalidateSummaryCache();
   return {
-    ok: failed.length === 0,
+    ok: result.ok && failed.length === 0,
     archived,
     skipped,
     failed,
