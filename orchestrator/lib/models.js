@@ -172,7 +172,7 @@ function listGrokAgentModels(cfg) {
     });
     const rows = parseGrokListModels(out);
     return rows.length ? rows : [{
-      slug: cfg.workers?.grok?.defaultModel || "grok-4.5",
+      slug: cfg.workers?.grok?.defaultModel || "grok-4.6",
       label: "Grok",
       effort: "via --effort",
       fast: false,

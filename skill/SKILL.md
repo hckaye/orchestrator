@@ -1,7 +1,6 @@
 ---
 name: orchestrator
 description: Commander-driven multi-CLI worker orchestration. The invoking agent or session classifies implementation units by risk, dispatches them to Devin, Codex, Cursor, Claude Code, or Grok workers in isolated git worktrees, pipelines each completion (review as soon as a worker finishes — never barrier-wait the whole cohort), then merges into one integration branch. Use when the user asks to "split work across agents", "have Devin/Codex/Cursor/Grok implement in parallel", "act as commander/orchestrator", or otherwise delegate implementation to other CLIs.
-user-invocable: true
 ---
 
 # Orchestrator Skill
@@ -18,9 +17,9 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
 2. Read config: `orchestrator config show`. Defaults:
    - devin → model `swe-1-7` (no effort option)
    - codex → model `gpt-5.6-luna`, effort `max`
-   - cursor → model `composer-2.5` (this model has no effort variants)
+   - cursor → model `cursor-grok-4.6-medium`, effort `medium`
    - claude → model `claude-opus-5`, effort `high`
-   - grok → model `grok-4.5`
+   - grok → model `grok-4.6`, effort `medium`
    - commander (the invoking agent/session) → model `claude-fable-5[1m]`, effort `high`; alternatively `gpt-5.6-sol`, effort `xhigh`
    - integration branch template: `integrate/${task}`, base: `main`
 3. All worker CLIs (`devin`, `claude`, `codex`, `cursor-agent`, `grok`) must be installed and authenticated. Verify with `which devin claude codex cursor-agent grok`.
@@ -32,9 +31,9 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
 | Commander | Invoking agent/session | Fable 5 1M / GPT-5.6 Sol | high / xhigh |
 | Worker: devin | `devin -p` | SWE 1.7 | not supported |
 | Worker: codex | `codex exec` | GPT-5.6 Luna | max |
-| Worker: cursor | `cursor-agent -p` | Composer 2.5 | model has no variants |
+| Worker: cursor | `cursor-agent -p` | Cursor Grok 4.6 | medium |
 | Worker: claude | `claude -p` | Opus 5.0 | high |
-| Worker: grok | `grok -p` | Grok 4.5 | CLI default |
+| Worker: grok | `grok -p` | Grok 4.6 | medium |
 
 Override a worker's model with `--model` and its effort with `--effort` at spawn.
 
@@ -44,13 +43,13 @@ Before dispatch, classify each implementation unit and use a suitable available 
 
 | Unit | Worker choices |
 |---|---|
-| Routine | Cursor Composer 2.5 Standard; Cursor Grok 4.5 high when some complexity is expected; Grok CLI Grok 4.5; Devin SWE-1.7; GLM 5.2 |
-| Wide-impact, important, or difficult | Codex GPT-5.6 Luna at `max`; Claude Code Opus 5.0 at `high` |
+| Routine | Cursor Grok 4.6 at `medium`; Grok CLI Grok 4.6 at `medium`; Devin SWE-1.7; GLM 5.2; Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
+| Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Luna at `max`; Claude Code Opus 5.0 at `high` |
 | Irreversible if wrong | Codex GPT-5.6 Sol at `xhigh`; Claude Fable 5 at `high` |
 
 Use the irreversible tier only when an incorrect result cannot be recovered normally: frozen formats, ABI schemas, generated-contract changes, core soundness, or public ABI changes. A unit that is merely difficult belongs in the middle tier.
 
-Cursor Grok 4.5 high means Grok through `cursor-agent`; Grok CLI Grok 4.5 means the official `grok` CLI. They are separate providers with independent capacity and may run concurrently. Cursor Composer, Cursor Grok, and Grok CLI have no orchestrator-wide parallel limit. Devin and GLM 5.2 share a maximum of five concurrent implementation workers across projects; reviewer use is unlimited.
+Cursor Grok 4.6 means Grok through `cursor-agent`; Grok CLI Grok 4.6 means the official `grok` CLI. They are separate providers with independent capacity and may run concurrently. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin and GLM 5.2 share a maximum of five concurrent implementation workers across projects; reviewer use is unlimited.
 
 Use either Claude Fable 5 1M at `high` or GPT-5.6 Sol at `xhigh` for the Commander; Fable/high is the config default and Sol/xhigh is its alternative. The current process is the Commander and orchestrator cannot change its model after launch, so select one of these models when starting the invoking session when the host permits it. Do not apply worker tiers to the Commander.
 
@@ -302,7 +301,7 @@ The worker resumes on its existing CLI session in the same worktree, applies you
 Revise guidance:
 - Be specific and actionable: cite file paths, line numbers, and what to change. The worker has its prior context but not your reasoning — say exactly what's wrong and what the desired state is.
 - One concern per revise is fine; batch multiple concerns into one revise when related.
-- If the same findings recur or revisions stop making progress, switch providers with `orchestrator-handoff` instead of revising indefinitely. For routine work, switch Devin/GLM 5.2 to Cursor Grok 4.5 high or Grok CLI Grok 4.5, and switch either Grok route to Devin/GLM 5.2. For difficult work, switch between Claude Opus 5.0 and Codex; only move to Sol/Fable when the unit meets the irreversible-tier definition. Include all prior review findings and diffs in the handoff brief, then restart the review cycle.
+- If the same findings recur or revisions stop making progress, switch providers with `orchestrator-handoff` instead of revising indefinitely. For routine work, switch Devin/GLM 5.2 to Cursor Grok 4.6 or Grok CLI Grok 4.6 at `medium`, and switch either Grok route to Devin/GLM 5.2. For difficult work, switch among either Grok 4.6 route at `xhigh`, Claude Opus 5.0, and Codex; only move to Sol/Fable when the unit meets the irreversible-tier definition. Include all prior review findings and diffs in the handoff brief, then restart the review cycle.
 - `--model` and `--interactive` can be overridden per revise.
 - If `orchestrator status <id>` shows no `sessionId`, resume is impossible (the CLI didn't emit a parseable session ID). Fall back to archive + re-spawn.
 
@@ -405,10 +404,11 @@ orchestrator archive --older-than 1d            # bulk-clean old finished worker
 orchestrator spawn devin --model swe-1-7 -- "implement /api/orders endpoint in src/api/orders.ts"
 orchestrator spawn devin --model glm-5.2 -- "implement a routine isolated unit"
 orchestrator spawn codex --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
-orchestrator spawn cursor -- "build OrdersForm React component in src/ui/OrdersForm.tsx"
-orchestrator spawn cursor --model grok-4.5 --effort high -- "implement a somewhat complex routine unit"
+orchestrator spawn cursor --model cursor-grok-4.6-medium --effort medium -- "build OrdersForm React component in src/ui/OrdersForm.tsx"
+orchestrator spawn cursor --model cursor-grok-4.6-medium --effort xhigh -- "implement a difficult architecture change"
 orchestrator spawn claude --model claude-opus-5 --effort high -- "implement a difficult architecture change"
-orchestrator spawn grok --model grok-4.5 -- "review the integration tests and fix failures"
+orchestrator spawn grok --model grok-4.6 --effort medium -- "review the integration tests and fix failures"
+orchestrator spawn grok --model grok-4.6 --effort xhigh -- "implement a difficult architecture change"
 
 orchestrator ls                              # reconcile roster often
 orchestrator wait <id> --timeout 120         # short timeout in reconcile loop (Pattern B)
@@ -440,4 +440,3 @@ never: spawn and stop without wait
 never: wait for all runners before first review
 never: leave merged or dead worktrees unarchived
 ```
-

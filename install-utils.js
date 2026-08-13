@@ -2,6 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 
 const NPM_COMMANDS = new Set(["npm", "npx"]);
+const CURSOR_DEFAULT_MODEL = "cursor-grok-4.6-medium";
+const CURSOR_DEFAULT_EFFORT = "medium";
+const PREVIOUS_CURSOR_DEFAULT_MODEL = "composer-2.5";
+const GROK_DEFAULT_MODEL = "grok-4.6";
+const GROK_DEFAULT_EFFORT = "medium";
+const PREVIOUS_GROK_DEFAULT_MODEL = "grok-4.5";
 
 const WORKER_AGENT_TARGETS = [
   { command: "devin", agent: "devin" },
@@ -35,6 +41,63 @@ export function buildSkillsInstallArgs(source, agents) {
     "--full-depth",
     "--yes",
   ];
+}
+
+export function updateConfigDefaults(config) {
+  let changed = false;
+  config.workers ||= {};
+  if (!config.workers.cursor) {
+    config.workers.cursor = {
+      cli: "cursor-agent",
+      defaultModel: CURSOR_DEFAULT_MODEL,
+      defaultEffort: CURSOR_DEFAULT_EFFORT,
+      yolo: true,
+      trust: true,
+      printMode: true,
+      extraArgs: [],
+    };
+    changed = true;
+  } else if (
+    !config.workers.cursor.defaultModel ||
+    config.workers.cursor.defaultModel === PREVIOUS_CURSOR_DEFAULT_MODEL
+  ) {
+    config.workers.cursor.defaultModel = CURSOR_DEFAULT_MODEL;
+    config.workers.cursor.defaultEffort = CURSOR_DEFAULT_EFFORT;
+    changed = true;
+  }
+  if (!config.workers.grok) {
+    config.workers.grok = {
+      cli: "grok",
+      defaultModel: GROK_DEFAULT_MODEL,
+      defaultEffort: GROK_DEFAULT_EFFORT,
+      permissionMode: "default",
+      alwaysApprove: true,
+      printMode: true,
+      extraArgs: [],
+    };
+    changed = true;
+  } else if (
+    !config.workers.grok.defaultModel ||
+    config.workers.grok.defaultModel === PREVIOUS_GROK_DEFAULT_MODEL
+  ) {
+    config.workers.grok.defaultModel = GROK_DEFAULT_MODEL;
+    changed = true;
+  }
+  if (!config.workers.grok.defaultEffort) {
+    config.workers.grok.defaultEffort = GROK_DEFAULT_EFFORT;
+    changed = true;
+  }
+
+  config.permissionBridge ||= {};
+  config.permissionBridge.patterns ||= {};
+  if (!config.permissionBridge.patterns.grok) {
+    config.permissionBridge.patterns.grok = [
+      { regex: "Allow|approve|permission|Do you want to", type: "permission" },
+      { regex: "\\?\\s*$", type: "question" },
+    ];
+    changed = true;
+  }
+  return changed;
 }
 
 /**

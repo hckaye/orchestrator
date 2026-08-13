@@ -44,9 +44,9 @@ Node.js（開発時は v25 を使用）と、使用する Agent CLI（`devin`、
 |---------|----------------|---------------------|-----------------------|---------------------|
 | devin   | `devin`        | `swe-1-7`           | 非対応                | `dangerous`（自動）  |
 | codex   | `codex`        | `gpt-5.6-luna`      | `max`                 | 承認をバイパス       |
-| cursor  | `cursor-agent` | `composer-2.5`      | バリエーションなし    | `--yolo`             |
+| cursor  | `cursor-agent` | `cursor-grok-4.6-medium` | `medium`          | `--yolo`             |
 | claude  | `claude`       | `claude-opus-5`     | `high`                | `bypassPermissions` |
-| grok    | `grok`         | `grok-4.5`          | CLI の既定値          | `always-approve`     |
+| grok    | `grok`         | `grok-4.6`          | `medium`              | `always-approve`     |
 
 Commander の既定モデルは `claude-fable-5[1m]`、effort は `high` です。代わりに `gpt-5.6-sol` と `xhigh` も選択できます。統合ブランチのテンプレートは `integrate/${task}`、ベースブランチは `main` です。
 
@@ -58,13 +58,13 @@ worker ごとのモデルは `--model`、effort は `--effort` で起動時に�
 
 | 実装単位 | 既定の worker 候補 |
 |---|---|
-| 定型的な作業 | Cursor Composer 2.5 Standard。多少複雑な場合は Cursor Grok 4.5 high。Grok CLI Grok 4.5、Devin SWE-1.7、GLM 5.2 も選択可能 |
-| 影響範囲が広い、重要、または難しい作業 | Codex GPT-5.6 Luna の `max`、Claude Code Opus 5.0 の `high` |
+| 定型的な作業 | Cursor Grok 4.6 の `medium`、Grok CLI Grok 4.6 の `medium`、Devin SWE-1.7、GLM 5.2、最後の候補として Codex GPT-5.6 Luna の `xhigh` |
+| 影響範囲が広い、重要、または難しい作業 | Cursor Grok 4.6 の `xhigh`、Grok CLI Grok 4.6 の `xhigh`、Codex GPT-5.6 Luna の `max`、Claude Code Opus 5.0 の `high` |
 | 間違えた場合に元に戻せない作業 | Codex GPT-5.6 Sol の `xhigh`、Claude Fable 5 の `high` |
 
 元に戻せない作業向けのモデルは、固定済みのフォーマット、ABI スキーマ、生成される契約の変更、健全性の中核、公開 ABI の変更など、通常の方法では失敗から復旧できない場合だけに使用します。単に難しいだけの作業には、中段のモデルを使用します。
 
-Cursor Grok 4.5 high と Grok CLI Grok 4.5 は別のプロバイダーで、並列処理の枠も独立しています。そのため、定型的な作業に両方を割り振れます。Cursor Composer、Cursor Grok、Grok CLI には、orchestrator 全体の並列数制限はありません。Devin と GLM 5.2 は、プロジェクト全体で実装用 worker を 5 個まで同時に使用できます。レビュー用途はこの制限に含みません。
+Cursor Grok 4.6 と Grok CLI Grok 4.6 は別のプロバイダーで、並列処理の枠も独立しています。そのため、同じ段階の作業に両方を割り振れます。定型的な作業では両方とも `medium`、中段では両方とも `xhigh` を使用します。Cursor Grok と Grok CLI には、orchestrator 全体の並列数制限はありません。Devin と GLM 5.2 は、プロジェクト全体で実装用 worker を 5 個まで同時に使用できます。レビュー用途はこの制限に含みません。
 
 Commander には Claude Fable 5 1M の `high` または GPT-5.6 Sol の `xhigh` を使用します。設定上の既定値は Fable/high で、Sol/xhigh も選択できます。`commander` の設定は参考値です。orchestrator は呼び出し元のセッションを起動したり置き換えたりしないため、利用環境が対応している場合は、セッション開始時にどちらかのモデルを選択してください。上記の 3 段階は、割り振り先の worker に適用します。Commander には適用しません。
 
@@ -102,10 +102,11 @@ orchestrator spawn codex --model gpt-5.6-luna --effort max -- "implement an impo
 orchestrator spawn devin  --model swe-1-7 -- "implement /api/orders in src/api/orders.ts"
 orchestrator spawn devin  --model glm-5.2 -- "implement a routine isolated unit"
 orchestrator spawn codex  --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
-orchestrator spawn cursor -- "build OrdersForm in src/ui/OrdersForm.tsx"
-orchestrator spawn cursor --model grok-4.5 --effort high -- "implement a somewhat complex routine unit"
+orchestrator spawn cursor --model cursor-grok-4.6-medium --effort medium -- "build OrdersForm in src/ui/OrdersForm.tsx"
+orchestrator spawn cursor --model cursor-grok-4.6-medium --effort xhigh -- "implement a difficult architecture change"
 orchestrator spawn claude --model claude-opus-5 --effort high -- "implement a difficult architecture change"
-orchestrator spawn grok   --model grok-4.5 -- "review the integration tests and fix failures"
+orchestrator spawn grok   --model grok-4.6 --effort medium -- "review the integration tests and fix failures"
+orchestrator spawn grok   --model grok-4.6 --effort xhigh -- "implement a difficult architecture change"
 
 orchestrator ls
 orchestrator wait <id> --timeout 120      # reconcile loop での短い待機（全 worker の一括待機より優先）

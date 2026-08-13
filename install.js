@@ -10,6 +10,7 @@ import {
   buildSkillsInstallArgs,
   detectInstalledSkillAgents,
   resolveNpmInvocation,
+  updateConfigDefaults,
 } from "./install-utils.js";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -44,29 +45,9 @@ function copy(source, destination) {
 
 function updateConfig(file) {
   const config = JSON.parse(fs.readFileSync(file, "utf8"));
-  let changed = false;
-  config.workers ||= {};
-  if (!config.workers.grok) {
-    config.workers.grok = {
-      cli: "grok",
-      defaultModel: "grok-4.5",
-      permissionMode: "default",
-      alwaysApprove: true,
-      printMode: true,
-      extraArgs: [],
-    };
-    changed = true;
+  if (updateConfigDefaults(config)) {
+    fs.writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`);
   }
-  config.permissionBridge ||= {};
-  config.permissionBridge.patterns ||= {};
-  if (!config.permissionBridge.patterns.grok) {
-    config.permissionBridge.patterns.grok = [
-      { regex: "Allow|approve|permission|Do you want to", type: "permission" },
-      { regex: "\\?\\s*$", type: "question" },
-    ];
-    changed = true;
-  }
-  if (changed) fs.writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`);
 }
 
 function installCommandShim() {

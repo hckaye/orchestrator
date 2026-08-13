@@ -17,8 +17,9 @@ import {
   buildSkillsInstallArgs,
   detectInstalledSkillAgents,
   resolveNpmInvocation,
+  updateConfigDefaults,
 } from "../install-utils.js";
-import { pickWorkerRuntime } from "../orchestrator/lib/models.js";
+import { applyCursorModelEffort, pickWorkerRuntime } from "../orchestrator/lib/models.js";
 import { moduleDirectory } from "../orchestrator/lib/paths.js";
 import { buildOrchestratorInvocation } from "../desktop/electron/lib/orchestrator-process.js";
 
@@ -76,6 +77,14 @@ test("model-selection defaults expose the approved commander choices and worker 
     model: "claude-opus-5",
     effort: "high",
   });
+  assert.deepEqual(pickWorkerRuntime(config, "cursor"), {
+    model: "cursor-grok-4.6-medium",
+    effort: "medium",
+  });
+  assert.deepEqual(pickWorkerRuntime(config, "grok"), {
+    model: "grok-4.6",
+    effort: "medium",
+  });
   assert.deepEqual(config.commander, {
     defaultModel: "claude-fable-5[1m]",
     thinkingLevel: "high",
@@ -83,6 +92,53 @@ test("model-selection defaults expose the approved commander choices and worker 
       model: "gpt-5.6-sol",
       thinkingLevel: "xhigh",
     }],
+  });
+});
+
+test("installer upgrades previous Cursor and Grok defaults without replacing custom choices", () => {
+  const legacy = {
+    workers: {
+      cursor: { defaultModel: "composer-2.5" },
+      grok: { defaultModel: "grok-4.5" },
+    },
+    permissionBridge: { patterns: { grok: [] } },
+  };
+  assert.equal(updateConfigDefaults(legacy), true);
+  assert.equal(legacy.workers.cursor.defaultModel, "cursor-grok-4.6-medium");
+  assert.equal(legacy.workers.cursor.defaultEffort, "medium");
+  assert.equal(legacy.workers.grok.defaultModel, "grok-4.6");
+  assert.equal(legacy.workers.grok.defaultEffort, "medium");
+
+  const custom = {
+    workers: {
+      cursor: { defaultModel: "cursor-custom", defaultEffort: "high" },
+      grok: { defaultModel: "grok-custom", defaultEffort: "high" },
+    },
+    permissionBridge: { patterns: { grok: [] } },
+  };
+  assert.equal(updateConfigDefaults(custom), false);
+  assert.equal(custom.workers.cursor.defaultModel, "cursor-custom");
+  assert.equal(custom.workers.cursor.defaultEffort, "high");
+  assert.equal(custom.workers.grok.defaultModel, "grok-custom");
+  assert.equal(custom.workers.grok.defaultEffort, "high");
+});
+
+test("Grok 4.6 defaults select the requested tier and explicit older models remain allowed", () => {
+  assert.equal(
+    applyCursorModelEffort(
+      "cursor-grok-4.6-medium",
+      "xhigh",
+      ["cursor-grok-4.6-medium", "cursor-grok-4.6-xhigh"]
+    ),
+    "cursor-grok-4.6-xhigh"
+  );
+
+  const config = {
+    workers: { grok: { defaultModel: "grok-4.6", defaultEffort: "medium" } },
+  };
+  assert.deepEqual(pickWorkerRuntime(config, "grok", { model: "grok-4.5" }), {
+    model: "grok-4.5",
+    effort: "medium",
   });
 });
 
