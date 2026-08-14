@@ -44,10 +44,14 @@ Before dispatch, classify each implementation unit and use a suitable available 
 | Unit | Worker choices |
 |---|---|
 | Routine | Cursor Grok 4.6 at `medium`; Grok CLI Grok 4.6 at `medium`; Devin SWE-1.7; GLM 5.2; Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
-| Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Luna at `max`; Claude Code Opus 5.0 at `high` |
+| Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Luna at `max` |
 | Irreversible if wrong | Codex GPT-5.6 Sol at `xhigh`; Claude Fable 5 at `high` |
 
 Use the irreversible tier only when an incorrect result cannot be recovered normally: frozen formats, ABI schemas, generated-contract changes, core soundness, or public ABI changes. A unit that is merely difficult belongs in the middle tier.
+
+Cursor workers may use only Grok, Composer, or Fable model families. Do not select any other model family for Cursor, even if `cursor-agent --list-models` lists it.
+
+Use Claude Opus primarily as a reviewer, not as an implementation worker. It may implement only when Claude is the only usable worker provider.
 
 Cursor Grok 4.6 means Grok through `cursor-agent`; Grok CLI Grok 4.6 means the official `grok` CLI. They are separate providers with independent capacity and may run concurrently. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin and GLM 5.2 share a maximum of five concurrent implementation workers across projects; reviewer use is unlimited.
 
@@ -301,7 +305,7 @@ The worker resumes on its existing CLI session in the same worktree, applies you
 Revise guidance:
 - Be specific and actionable: cite file paths, line numbers, and what to change. The worker has its prior context but not your reasoning — say exactly what's wrong and what the desired state is.
 - One concern per revise is fine; batch multiple concerns into one revise when related.
-- If the same findings recur or revisions stop making progress, switch providers with `orchestrator-handoff` instead of revising indefinitely. For routine work, switch Devin/GLM 5.2 to Cursor Grok 4.6 or Grok CLI Grok 4.6 at `medium`, and switch either Grok route to Devin/GLM 5.2. For difficult work, switch among either Grok 4.6 route at `xhigh`, Claude Opus 5.0, and Codex; only move to Sol/Fable when the unit meets the irreversible-tier definition. Include all prior review findings and diffs in the handoff brief, then restart the review cycle.
+- If the same findings recur or revisions stop making progress, switch providers with `orchestrator-handoff` instead of revising indefinitely. For routine work, switch Devin/GLM 5.2 to Cursor Grok 4.6 or Grok CLI Grok 4.6 at `medium`, and switch either Grok route to Devin/GLM 5.2. For difficult work, switch among either Grok 4.6 route at `xhigh` and Codex. Use Claude Opus for implementation only when Claude is the only usable worker provider. Only move to Sol/Fable when the unit meets the irreversible-tier definition. Include all prior review findings and diffs in the handoff brief, then restart the review cycle.
 - `--model` and `--interactive` can be overridden per revise.
 - If `orchestrator status <id>` shows no `sessionId`, resume is impossible (the CLI didn't emit a parseable session ID). Fall back to archive + re-spawn.
 
@@ -397,6 +401,8 @@ orchestrator archive --older-than 1d            # bulk-clean old finished worker
 - **Auto-approve by default.** Only use `--interactive` when the user asks to gate a worker. PTY prompt detection is best-effort and CLI-version-dependent.
 - **Preserve task semantics.** Investigation-only unit → brief must say "DO NOT edit files." Refactor → "refactor, not rewrite."
 - **Follow the default model-selection policy.** Do not spend the irreversible tier on work that is only difficult, and honor its provider concurrency limits.
+- **Restrict Cursor models.** Cursor workers may use only Grok, Composer, or Fable model families, even if Cursor lists other models.
+- **Use Claude Opus for review.** Do not dispatch it for implementation unless Claude is the only usable worker provider.
 
 ## Quick reference
 
@@ -406,7 +412,7 @@ orchestrator spawn devin --model glm-5.2 -- "implement a routine isolated unit"
 orchestrator spawn codex --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
 orchestrator spawn cursor --model cursor-grok-4.6-medium --effort medium -- "build OrdersForm React component in src/ui/OrdersForm.tsx"
 orchestrator spawn cursor --model cursor-grok-4.6-medium --effort xhigh -- "implement a difficult architecture change"
-orchestrator spawn claude --model claude-opus-5 --effort high -- "implement a difficult architecture change"
+orchestrator spawn claude --model claude-opus-5 --effort high -- "review a difficult architecture change; report findings only, do not edit files"
 orchestrator spawn grok --model grok-4.6 --effort medium -- "review the integration tests and fix failures"
 orchestrator spawn grok --model grok-4.6 --effort xhigh -- "implement a difficult architecture change"
 

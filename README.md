@@ -59,10 +59,14 @@ Classify each unit before dispatching it. These are selection defaults, not a re
 | Unit | Default worker choices |
 |---|---|
 | Routine | Cursor Grok 4.6 at `medium`; Grok CLI Grok 4.6 at `medium`; Devin SWE-1.7; GLM 5.2; Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
-| Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Luna at `max`; Claude Code Opus 5.0 at `high` |
+| Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Luna at `max` |
 | Irreversible if wrong | Codex GPT-5.6 Sol at `xhigh`; Claude Fable 5 at `high` |
 
 The irreversible tier is only for units whose failure cannot be recovered normally, such as frozen formats, ABI schemas, generated-contract changes, core soundness, or public ABI changes. Ordinary difficult work stays in the middle tier.
+
+Cursor workers may use only Grok, Composer, or Fable model families. Do not select any other model family for Cursor, even if `cursor-agent --list-models` lists it.
+
+Use Claude Opus primarily as a reviewer, not as an implementation worker. It may implement only when Claude is the only usable worker provider.
 
 Cursor Grok 4.6 and Grok CLI Grok 4.6 are separate providers with independent parallel capacity, so both may be dispatched in the same tier. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin and GLM 5.2 share a limit of five concurrent implementation workers across projects; reviewer use is not part of that limit.
 
@@ -104,7 +108,7 @@ orchestrator spawn devin  --model glm-5.2 -- "implement a routine isolated unit"
 orchestrator spawn codex  --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
 orchestrator spawn cursor --model cursor-grok-4.6-medium --effort medium -- "build OrdersForm in src/ui/OrdersForm.tsx"
 orchestrator spawn cursor --model cursor-grok-4.6-medium --effort xhigh -- "implement a difficult architecture change"
-orchestrator spawn claude --model claude-opus-5 --effort high -- "implement a difficult architecture change"
+orchestrator spawn claude --model claude-opus-5 --effort high -- "review a difficult architecture change; report findings only, do not edit files"
 orchestrator spawn grok   --model grok-4.6 --effort medium -- "review the integration tests and fix failures"
 orchestrator spawn grok   --model grok-4.6 --effort xhigh -- "implement a difficult architecture change"
 

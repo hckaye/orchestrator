@@ -59,10 +59,14 @@ worker ごとのモデルは `--model`、effort は `--effort` で起動時に�
 | 実装単位 | 既定の worker 候補 |
 |---|---|
 | 定型的な作業 | Cursor Grok 4.6 の `medium`、Grok CLI Grok 4.6 の `medium`、Devin SWE-1.7、GLM 5.2、最後の候補として Codex GPT-5.6 Luna の `xhigh` |
-| 影響範囲が広い、重要、または難しい作業 | Cursor Grok 4.6 の `xhigh`、Grok CLI Grok 4.6 の `xhigh`、Codex GPT-5.6 Luna の `max`、Claude Code Opus 5.0 の `high` |
+| 影響範囲が広い、重要、または難しい作業 | Cursor Grok 4.6 の `xhigh`、Grok CLI Grok 4.6 の `xhigh`、Codex GPT-5.6 Luna の `max` |
 | 間違えた場合に元に戻せない作業 | Codex GPT-5.6 Sol の `xhigh`、Claude Fable 5 の `high` |
 
 元に戻せない作業向けのモデルは、固定済みのフォーマット、ABI スキーマ、生成される契約の変更、健全性の中核、公開 ABI の変更など、通常の方法では失敗から復旧できない場合だけに使用します。単に難しいだけの作業には、中段のモデルを使用します。
+
+Cursor worker では、Grok、Composer、Fable のモデルだけを使用できます。`cursor-agent --list-models` にほかのモデルが表示されても選択しないでください。
+
+Claude Opus は原則として実装ではなくレビューに使用します。利用できる worker が Claude だけの場合に限り、実装にも使用できます。
 
 Cursor Grok 4.6 と Grok CLI Grok 4.6 は別のプロバイダーで、並列処理の枠も独立しています。そのため、同じ段階の作業に両方を割り振れます。定型的な作業では両方とも `medium`、中段では両方とも `xhigh` を使用します。Cursor Grok と Grok CLI には、orchestrator 全体の並列数制限はありません。Devin と GLM 5.2 は、プロジェクト全体で実装用 worker を 5 個まで同時に使用できます。レビュー用途はこの制限に含みません。
 
@@ -104,7 +108,7 @@ orchestrator spawn devin  --model glm-5.2 -- "implement a routine isolated unit"
 orchestrator spawn codex  --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
 orchestrator spawn cursor --model cursor-grok-4.6-medium --effort medium -- "build OrdersForm in src/ui/OrdersForm.tsx"
 orchestrator spawn cursor --model cursor-grok-4.6-medium --effort xhigh -- "implement a difficult architecture change"
-orchestrator spawn claude --model claude-opus-5 --effort high -- "implement a difficult architecture change"
+orchestrator spawn claude --model claude-opus-5 --effort high -- "review a difficult architecture change; report findings only, do not edit files"
 orchestrator spawn grok   --model grok-4.6 --effort medium -- "review the integration tests and fix failures"
 orchestrator spawn grok   --model grok-4.6 --effort xhigh -- "implement a difficult architecture change"
 
