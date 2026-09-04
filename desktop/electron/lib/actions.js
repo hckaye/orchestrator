@@ -105,6 +105,7 @@ function runOrchestrator(argv, { timeoutMs = 60000 } = {}) {
     const invocation = buildOrchestratorInvocation(bin, argv);
     const child = spawn(invocation.command, invocation.args, {
       env: invocation.env,
+      windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";

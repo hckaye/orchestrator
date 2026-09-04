@@ -196,6 +196,7 @@ try {
     child = spawn(cmd.cliBin, cmd.argv, {
       cwd: st.worktree?.path || st.cwd || process.cwd(),
       env: { ...process.env, ...cmd.env },
+      windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
     child.stdout.on("data", (d) => {

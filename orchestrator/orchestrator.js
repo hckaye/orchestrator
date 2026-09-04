@@ -183,6 +183,7 @@ function relaunchWorker(id, nextState, logLabel) {
   const logFd = fs.openSync(workerLog, "a");
   const child = spawn(process.execPath, [path.join(HERE, "lib", "worker.js"), id], {
     detached: true,
+    windowsHide: true,
     stdio: ["ignore", logFd, logFd],
     cwd: HERE,
   });
@@ -265,6 +266,7 @@ async function main() {
       const logFd = fs.openSync(workerLog, "a");
       const child = spawn(process.execPath, [path.join(HERE, "lib", "worker.js"), id], {
         detached: true,
+        windowsHide: true,
         stdio: ["ignore", logFd, logFd],
         cwd: HERE,
       });
@@ -394,6 +396,7 @@ async function main() {
       const logFd = fs.openSync(workerLog, "a");
       const child = spawn(process.execPath, [path.join(HERE, "lib", "worker.js"), id], {
         detached: true,
+        windowsHide: true,
         stdio: ["ignore", logFd, logFd],
         cwd: HERE,
       });

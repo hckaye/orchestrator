@@ -48,7 +48,7 @@ Defaults in `~/.orchestrator/config.json`:
 | claude  | `claude`       | `claude-opus-5`     | `high`                | `bypassPermissions` |
 | grok    | `grok`         | `grok-4.6`          | `medium`              | `always-approve`    |
 
-Commander default model: `claude-fable-5[1m]` at high effort. `gpt-5.6-sol` at xhigh is the alternative Commander choice. Integration branch template: `integrate/${task}`, base: `main`.
+Commander default model: `claude-fable-5-1[1m]` at high effort. `gpt-5.6-sol` at xhigh is the alternative Commander choice. Integration branch template: `integrate/${task}`, base: `main`.
 
 Override a worker's model per-spawn with `--model` and its effort with `--effort`.
 
@@ -60,9 +60,11 @@ Classify each unit before dispatching it. These are selection defaults, not a re
 |---|---|
 | Routine | Cursor Grok 4.6 at `medium`; Grok CLI Grok 4.6 at `medium`; Devin SWE-1.7; GLM 5.2; Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
 | Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Luna at `max` |
-| Irreversible if wrong | Codex GPT-5.6 Sol at `xhigh`; Claude Fable 5 at `high` |
+| Irreversible if wrong | Codex GPT-5.6 Sol at `xhigh`; Claude Fable 5.1 at `high` |
 
 The irreversible tier is only for units whose failure cannot be recovered normally, such as frozen formats, ABI schemas, generated-contract changes, core soundness, or public ABI changes. Ordinary difficult work stays in the middle tier.
+
+When multiple versions of the same named model are available, use the numerically newest version by default. The model name is a strict boundary: choose Opus 5 over Opus 4.8, but do not replace GPT-5.6 Luna with GPT-5.6 Sol or Claude Opus 5 with Claude Fable 5.1.
 
 Cursor workers may use only Grok, Composer, or Fable model families. Do not select any other model family for Cursor, even if `cursor-agent --list-models` lists it.
 
@@ -70,7 +72,7 @@ Use Claude Opus primarily as a reviewer, not as an implementation worker. It may
 
 Cursor Grok 4.6 and Grok CLI Grok 4.6 are separate providers with independent parallel capacity, so both may be dispatched in the same tier. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin and GLM 5.2 share a limit of five concurrent implementation workers across projects; reviewer use is not part of that limit.
 
-Use either Claude Fable 5 1M at `high` or GPT-5.6 Sol at `xhigh` for the Commander; Fable/high is the config default and Sol/xhigh is its alternative. The `commander` config entry is advisory because orchestrator does not launch or replace the invoking session, so select one of these models when starting the session when the host supports it. The three tiers above apply to dispatched workers, not to the Commander.
+Use either Claude Fable 5.1 1M at `high` or GPT-5.6 Sol at `xhigh` for the Commander; Fable/high is the config default and Sol/xhigh is its alternative. The `commander` config entry is advisory because orchestrator does not launch or replace the invoking session, so select one of these models when starting the session when the host supports it. The three tiers above apply to dispatched workers, not to the Commander.
 
 ### Model and effort flags
 

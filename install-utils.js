@@ -8,6 +8,8 @@ const PREVIOUS_CURSOR_DEFAULT_MODEL = "composer-2.5";
 const GROK_DEFAULT_MODEL = "grok-4.6";
 const GROK_DEFAULT_EFFORT = "medium";
 const PREVIOUS_GROK_DEFAULT_MODEL = "grok-4.5";
+const COMMANDER_DEFAULT_MODEL = "claude-fable-5-1[1m]";
+const PREVIOUS_COMMANDER_DEFAULT_MODEL = "claude-fable-5[1m]";
 
 const WORKER_AGENT_TARGETS = [
   { command: "devin", agent: "devin" },
@@ -85,6 +87,10 @@ export function updateConfigDefaults(config) {
   }
   if (!config.workers.grok.defaultEffort) {
     config.workers.grok.defaultEffort = GROK_DEFAULT_EFFORT;
+    changed = true;
+  }
+  if (config.commander?.defaultModel === PREVIOUS_COMMANDER_DEFAULT_MODEL) {
+    config.commander.defaultModel = COMMANDER_DEFAULT_MODEL;
     changed = true;
   }
 

@@ -193,7 +193,7 @@ function classifySlugFamily(slug) {
 
 const CLAUDE_MODELS = [
   { slug: "fable", label: "Fable (latest alias)", effort: "via --effort" },
-  { slug: "claude-fable-5[1m]", label: "Fable 5 1M", effort: "via --effort" },
+  { slug: "claude-fable-5-1[1m]", label: "Fable 5.1 1M", effort: "via --effort" },
   { slug: "opus", label: "Opus (latest alias)", effort: "via --effort" },
   { slug: "claude-opus-5", label: "Opus 5.0", effort: "via --effort" },
   { slug: "claude-opus-4-8[1m]", label: "Opus 4.8 1M", effort: "via --effort" },

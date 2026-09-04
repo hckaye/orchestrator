@@ -20,7 +20,7 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
    - cursor → model `cursor-grok-4.6-medium`, effort `medium`
    - claude → model `claude-opus-5`, effort `high`
    - grok → model `grok-4.6`, effort `medium`
-   - commander (the invoking agent/session) → model `claude-fable-5[1m]`, effort `high`; alternatively `gpt-5.6-sol`, effort `xhigh`
+   - commander (the invoking agent/session) → model `claude-fable-5-1[1m]`, effort `high`; alternatively `gpt-5.6-sol`, effort `xhigh`
    - integration branch template: `integrate/${task}`, base: `main`
 3. All worker CLIs (`devin`, `claude`, `codex`, `cursor-agent`, `grok`) must be installed and authenticated. Verify with `which devin claude codex cursor-agent grok`.
 
@@ -28,7 +28,7 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
 
 | Role | CLI | Default model | Effort |
 |---|---|---|---|
-| Commander | Invoking agent/session | Fable 5 1M / GPT-5.6 Sol | high / xhigh |
+| Commander | Invoking agent/session | Fable 5.1 1M / GPT-5.6 Sol | high / xhigh |
 | Worker: devin | `devin -p` | SWE 1.7 | not supported |
 | Worker: codex | `codex exec` | GPT-5.6 Luna | max |
 | Worker: cursor | `cursor-agent -p` | Cursor Grok 4.6 | medium |
@@ -45,9 +45,11 @@ Before dispatch, classify each implementation unit and use a suitable available 
 |---|---|
 | Routine | Cursor Grok 4.6 at `medium`; Grok CLI Grok 4.6 at `medium`; Devin SWE-1.7; GLM 5.2; Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
 | Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Luna at `max` |
-| Irreversible if wrong | Codex GPT-5.6 Sol at `xhigh`; Claude Fable 5 at `high` |
+| Irreversible if wrong | Codex GPT-5.6 Sol at `xhigh`; Claude Fable 5.1 at `high` |
 
 Use the irreversible tier only when an incorrect result cannot be recovered normally: frozen formats, ABI schemas, generated-contract changes, core soundness, or public ABI changes. A unit that is merely difficult belongs in the middle tier.
+
+When multiple versions of the same named model are available, use the numerically newest version by default. The model name is a strict boundary: choose Opus 5 over Opus 4.8, but do not replace GPT-5.6 Luna with GPT-5.6 Sol or Claude Opus 5 with Claude Fable 5.1.
 
 Cursor workers may use only Grok, Composer, or Fable model families. Do not select any other model family for Cursor, even if `cursor-agent --list-models` lists it.
 
@@ -55,7 +57,7 @@ Use Claude Opus primarily as a reviewer, not as an implementation worker. It may
 
 Cursor Grok 4.6 means Grok through `cursor-agent`; Grok CLI Grok 4.6 means the official `grok` CLI. They are separate providers with independent capacity and may run concurrently. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin and GLM 5.2 share a maximum of five concurrent implementation workers across projects; reviewer use is unlimited.
 
-Use either Claude Fable 5 1M at `high` or GPT-5.6 Sol at `xhigh` for the Commander; Fable/high is the config default and Sol/xhigh is its alternative. The current process is the Commander and orchestrator cannot change its model after launch, so select one of these models when starting the invoking session when the host permits it. Do not apply worker tiers to the Commander.
+Use either Claude Fable 5.1 1M at `high` or GPT-5.6 Sol at `xhigh` for the Commander; Fable/high is the config default and Sol/xhigh is its alternative. The current process is the Commander and orchestrator cannot change its model after launch, so select one of these models when starting the invoking session when the host permits it. Do not apply worker tiers to the Commander.
 
 ## Model and effort flags — important
 
@@ -401,6 +403,7 @@ orchestrator archive --older-than 1d            # bulk-clean old finished worker
 - **Auto-approve by default.** Only use `--interactive` when the user asks to gate a worker. PTY prompt detection is best-effort and CLI-version-dependent.
 - **Preserve task semantics.** Investigation-only unit → brief must say "DO NOT edit files." Refactor → "refactor, not rewrite."
 - **Follow the default model-selection policy.** Do not spend the irreversible tier on work that is only difficult, and honor its provider concurrency limits.
+- **Prefer the newest version of the same named model.** Compare versions numerically and select the newest available version by default. Never cross the model-name boundary to do so; Opus may replace an older Opus, but Luna and Sol must not replace each other, and neither may Fable and Opus.
 - **Restrict Cursor models.** Cursor workers may use only Grok, Composer, or Fable model families, even if Cursor lists other models.
 - **Use Claude Opus for review.** Do not dispatch it for implementation unless Claude is the only usable worker provider.
 
