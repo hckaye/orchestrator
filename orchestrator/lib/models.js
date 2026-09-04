@@ -213,6 +213,7 @@ const DEVIN_MODELS = [
 const CODEX_MODELS = [
   { slug: "gpt-5.6-luna", label: "GPT-5.6 Luna", effort: "via --effort" },
   { slug: "gpt-5.6-sol", label: "GPT-5.6 Sol", effort: "via --effort" },
+  { slug: "gpt-6-astra", label: "GPT-6 Astra", effort: "via --effort" },
 ];
 
 export function listModels(cfg, typeFilter) {

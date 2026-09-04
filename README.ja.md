@@ -60,11 +60,16 @@ worker ごとのモデルは `--model`、effort は `--effort` で起動時に�
 |---|---|
 | 定型的な作業 | Cursor Grok 4.6 の `medium`、Grok CLI Grok 4.6 の `medium`、Devin SWE-1.7、GLM 5.2、最後の候補として Codex GPT-5.6 Luna の `xhigh` |
 | 影響範囲が広い、重要、または難しい作業 | Cursor Grok 4.6 の `xhigh`、Grok CLI Grok 4.6 の `xhigh`、Codex GPT-5.6 Luna の `max` |
-| 間違えた場合に元に戻せない作業 | Codex GPT-5.6 Sol の `xhigh`、Claude Fable 5.1 の `high` |
+| 間違えた場合に元に戻せない作業 | Codex GPT-6 Astra の `xhigh`、Claude Fable 5.1 の `xhigh` |
 
 元に戻せない作業向けのモデルは、固定済みのフォーマット、ABI スキーマ、生成される契約の変更、健全性の中核、公開 ABI の変更など、通常の方法では失敗から復旧できない場合だけに使用します。単に難しいだけの作業には、中段のモデルを使用します。
 
-同名モデルに複数のバージョンがある場合は、原則として数値上もっとも新しいバージョンを使用します。モデル名が異なるものには置き換えません。たとえば Opus 4.8 と Opus 5 が利用できる場合は Opus 5 を使用しますが、GPT-5.6 Luna を GPT-5.6 Sol に、Claude Opus 5 を Claude Fable 5.1 に置き換えることはできません。
+新しい汎用モジュール、コードベースから広く再利用されるライブラリ、コードベースのアーキテクチャ設計、アーキテクチャの ADR の作成とレビューも、この段階のモデルで扱います。設計と実装の切り分けは次の基準です。
+
+- 設計が固まれば、あとは機械的に実装が決まるものは、この段階では設計とレビューだけを行い、実装は下の段階の worker に割り振ります。
+- どの層にあるかではなく、コード自体の性能が重要になるところ（ホットパスのアルゴリズム、アロケーション、内側のループなど）は、実装もこの段階で行います。
+
+同名モデルに複数のバージョンがある場合は、原則として数値上もっとも新しいバージョンを使用します。モデル名が異なるものには置き換えません。たとえば Opus 4.8 と Opus 5 が利用できる場合は Opus 5 を使用しますが、GPT-5.6 Luna を GPT-5.6 Sol や GPT-6 Astra に、Claude Opus 5 を Claude Fable 5.1 に置き換えることはできません。
 
 Cursor worker では、Grok、Composer、Fable のモデルだけを使用できます。`cursor-agent --list-models` にほかのモデルが表示されても選択しないでください。
 
@@ -108,6 +113,10 @@ orchestrator spawn codex --model gpt-5.6-luna --effort max -- "implement an impo
 orchestrator spawn devin  --model swe-1-7 -- "implement /api/orders in src/api/orders.ts"
 orchestrator spawn devin  --model glm-5.2 -- "implement a routine isolated unit"
 orchestrator spawn codex  --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
+orchestrator spawn codex  --model gpt-6-astra --effort xhigh -- "implement an irreversible ABI or schema change"
+orchestrator spawn claude --model claude-fable-5-1[1m] --effort xhigh -- "write an ADR for a new shared cache module; design the public API; DO NOT implement"
+orchestrator spawn claude --model claude-fable-5-1[1m] --effort xhigh -- "review the ADR for the shared cache module; report findings only, do not implement"
+orchestrator spawn codex  --model gpt-6-astra --effort xhigh -- "implement the hot-path lookup in the shared cache; the performance of this code matters"
 orchestrator spawn cursor --model cursor-grok-4.6-medium --effort medium -- "build OrdersForm in src/ui/OrdersForm.tsx"
 orchestrator spawn cursor --model cursor-grok-4.6-medium --effort xhigh -- "implement a difficult architecture change"
 orchestrator spawn claude --model claude-opus-5 --effort high -- "review a difficult architecture change; report findings only, do not edit files"

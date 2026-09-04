@@ -45,11 +45,16 @@ Before dispatch, classify each implementation unit and use a suitable available 
 |---|---|
 | Routine | Cursor Grok 4.6 at `medium`; Grok CLI Grok 4.6 at `medium`; Devin SWE-1.7; GLM 5.2; Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
 | Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Luna at `max` |
-| Irreversible if wrong | Codex GPT-5.6 Sol at `xhigh`; Claude Fable 5.1 at `high` |
+| Irreversible if wrong | Codex GPT-6 Astra at `xhigh`; Claude Fable 5.1 at `xhigh` |
 
 Use the irreversible tier only when an incorrect result cannot be recovered normally: frozen formats, ABI schemas, generated-contract changes, core soundness, or public ABI changes. A unit that is merely difficult belongs in the middle tier.
 
-When multiple versions of the same named model are available, use the numerically newest version by default. The model name is a strict boundary: choose Opus 5 over Opus 4.8, but do not replace GPT-5.6 Luna with GPT-5.6 Sol or Claude Opus 5 with Claude Fable 5.1.
+Also use this tier for new general-purpose modules, libraries the rest of the codebase will reuse widely, codebase architecture design, and architecture ADRs (writing or review). Split design from implementation with this rule:
+
+- If a settled design determines the implementation mechanically, this tier does design and review only. Dispatch implementation to a lower tier.
+- If the performance of the code itself matters (inner loops, allocations, hot-path algorithms), keep implementation on this tier. Do not choose this tier just because the work sits in a given architectural layer.
+
+When multiple versions of the same named model are available, use the numerically newest version by default. The model name is a strict boundary: choose Opus 5 over Opus 4.8, but do not replace GPT-5.6 Luna with GPT-5.6 Sol or GPT-6 Astra, or Claude Opus 5 with Claude Fable 5.1.
 
 Cursor workers may use only Grok, Composer, or Fable model families. Do not select any other model family for Cursor, even if `cursor-agent --list-models` lists it.
 
@@ -94,9 +99,9 @@ It means `gpt-5.6-luna` plus `model_reasoning_effort="max"`; it does not mean a 
 
 ## Phase 0 — Decompose
 
-Break the user's task into independent, parallelizable units. Each unit becomes one worker. Prefer one worker per concern (e.g. "backend endpoint", "frontend form", "tests"), not one per file. If the work is strictly sequential, run a single worker — do not over-parallelize. Classify every unit with the default model-selection policy above before choosing a worker.
+Break the user's task into independent, parallelizable units. Each unit becomes one worker. Prefer one worker per concern (e.g. "backend endpoint", "frontend form", "tests"), not one per file. If the work is strictly sequential, run a single worker — do not over-parallelize. Classify every unit with the default model-selection policy above before choosing a worker. When a unit belongs on the irreversible tier, split design from implementation only if a settled design determines the rest mechanically: dispatch that design first, then implement on a lower tier. If the performance of the code itself matters, keep implementation on this tier.
 
-For each unit decide: worker type, model override (if any), and a one-paragraph self-contained task brief. Workers start with **zero context** — the brief must include goal, relevant file paths, acceptance criteria, and constraints.
+For each unit decide: worker type, model override (if any), and a one-paragraph self-contained task brief. Workers start with **zero context** — the brief must include goal, relevant file paths, acceptance criteria, and constraints. Design-only irreversible units must say so in the brief (produce or review the design; do not implement).
 
 ## Phase 1 — Dispatch
 
@@ -307,7 +312,7 @@ The worker resumes on its existing CLI session in the same worktree, applies you
 Revise guidance:
 - Be specific and actionable: cite file paths, line numbers, and what to change. The worker has its prior context but not your reasoning — say exactly what's wrong and what the desired state is.
 - One concern per revise is fine; batch multiple concerns into one revise when related.
-- If the same findings recur or revisions stop making progress, switch providers with `orchestrator-handoff` instead of revising indefinitely. For routine work, switch Devin/GLM 5.2 to Cursor Grok 4.6 or Grok CLI Grok 4.6 at `medium`, and switch either Grok route to Devin/GLM 5.2. For difficult work, switch among either Grok 4.6 route at `xhigh` and Codex. Use Claude Opus for implementation only when Claude is the only usable worker provider. Only move to Sol/Fable when the unit meets the irreversible-tier definition. Include all prior review findings and diffs in the handoff brief, then restart the review cycle.
+- If the same findings recur or revisions stop making progress, switch providers with `orchestrator-handoff` instead of revising indefinitely. For routine work, switch Devin/GLM 5.2 to Cursor Grok 4.6 or Grok CLI Grok 4.6 at `medium`, and switch either Grok route to Devin/GLM 5.2. For difficult work, switch among either Grok 4.6 route at `xhigh` and Codex. Use Claude Opus for implementation only when Claude is the only usable worker provider. Only move to GPT-6 Astra or Fable 5.1 at `xhigh` when the unit meets the irreversible-tier definition. If the remaining work is mechanical implementation of an already-accepted design, stay on a lower tier. If the remaining work is performance-sensitive code, keep it on this tier. Include all prior review findings and diffs in the handoff brief, then restart the review cycle.
 - `--model` and `--interactive` can be overridden per revise.
 - If `orchestrator status <id>` shows no `sessionId`, resume is impossible (the CLI didn't emit a parseable session ID). Fall back to archive + re-spawn.
 
@@ -401,9 +406,9 @@ orchestrator archive --older-than 1d            # bulk-clean old finished worker
 - **Do not push/PR per worker.** Only `orchestrator finish` pushes the integration branch.
 - **Use `wait`, not tight status polls.** Prefer short/moderate `wait` timeouts plus `ls` reconcile over spinning on `status`. Long worker runs are normal; long commander silence without re-arm is not.
 - **Auto-approve by default.** Only use `--interactive` when the user asks to gate a worker. PTY prompt detection is best-effort and CLI-version-dependent.
-- **Preserve task semantics.** Investigation-only unit → brief must say "DO NOT edit files." Refactor → "refactor, not rewrite."
-- **Follow the default model-selection policy.** Do not spend the irreversible tier on work that is only difficult, and honor its provider concurrency limits.
-- **Prefer the newest version of the same named model.** Compare versions numerically and select the newest available version by default. Never cross the model-name boundary to do so; Opus may replace an older Opus, but Luna and Sol must not replace each other, and neither may Fable and Opus.
+- **Preserve task semantics.** Investigation-only unit → brief must say "DO NOT edit files." Refactor → "refactor, not rewrite." Irreversible-tier design whose implementation will follow mechanically → brief must say design only, do not implement. Irreversible-tier implementation whose code performance matters → implement on this tier.
+- **Follow the default model-selection policy.** Do not spend the irreversible tier on work that is only difficult, and honor its provider concurrency limits. For new general-purpose modules, widely reused libraries, codebase architecture, and ADRs, design on this tier. Dispatch implementation to a lower tier when it follows the design mechanically. Keep implementation on this tier when the code's own performance matters, not because of the layer it sits in.
+- **Prefer the newest version of the same named model.** Compare versions numerically and select the newest available version by default. Never cross the model-name boundary to do so; Opus may replace an older Opus, but Luna, Sol, and Astra must not replace each other, and neither may Fable and Opus.
 - **Restrict Cursor models.** Cursor workers may use only Grok, Composer, or Fable model families, even if Cursor lists other models.
 - **Use Claude Opus for review.** Do not dispatch it for implementation unless Claude is the only usable worker provider.
 
@@ -413,6 +418,10 @@ orchestrator archive --older-than 1d            # bulk-clean old finished worker
 orchestrator spawn devin --model swe-1-7 -- "implement /api/orders endpoint in src/api/orders.ts"
 orchestrator spawn devin --model glm-5.2 -- "implement a routine isolated unit"
 orchestrator spawn codex --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
+orchestrator spawn codex --model gpt-6-astra --effort xhigh -- "implement an irreversible ABI or schema change"
+orchestrator spawn claude --model claude-fable-5-1[1m] --effort xhigh -- "write an ADR for a new shared cache module; design the public API; DO NOT implement"
+orchestrator spawn claude --model claude-fable-5-1[1m] --effort xhigh -- "review the ADR for the shared cache module; report findings only, do not implement"
+orchestrator spawn codex --model gpt-6-astra --effort xhigh -- "implement the hot-path lookup in the shared cache; the performance of this code matters"
 orchestrator spawn cursor --model cursor-grok-4.6-medium --effort medium -- "build OrdersForm React component in src/ui/OrdersForm.tsx"
 orchestrator spawn cursor --model cursor-grok-4.6-medium --effort xhigh -- "implement a difficult architecture change"
 orchestrator spawn claude --model claude-opus-5 --effort high -- "review a difficult architecture change; report findings only, do not edit files"

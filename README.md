@@ -60,11 +60,16 @@ Classify each unit before dispatching it. These are selection defaults, not a re
 |---|---|
 | Routine | Cursor Grok 4.6 at `medium`; Grok CLI Grok 4.6 at `medium`; Devin SWE-1.7; GLM 5.2; Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
 | Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Luna at `max` |
-| Irreversible if wrong | Codex GPT-5.6 Sol at `xhigh`; Claude Fable 5.1 at `high` |
+| Irreversible if wrong | Codex GPT-6 Astra at `xhigh`; Claude Fable 5.1 at `xhigh` |
 
 The irreversible tier is only for units whose failure cannot be recovered normally, such as frozen formats, ABI schemas, generated-contract changes, core soundness, or public ABI changes. Ordinary difficult work stays in the middle tier.
 
-When multiple versions of the same named model are available, use the numerically newest version by default. The model name is a strict boundary: choose Opus 5 over Opus 4.8, but do not replace GPT-5.6 Luna with GPT-5.6 Sol or Claude Opus 5 with Claude Fable 5.1.
+Also use this tier for new general-purpose modules, libraries the rest of the codebase will reuse widely, codebase architecture design, and architecture ADRs (writing or review). Split design from implementation with this rule:
+
+- If a settled design determines the implementation mechanically, this tier does design and review only. Dispatch implementation to a lower tier.
+- If the performance of the code itself matters (inner loops, allocations, hot-path algorithms), keep implementation on this tier. Do not choose this tier just because the work sits in a given architectural layer.
+
+When multiple versions of the same named model are available, use the numerically newest version by default. The model name is a strict boundary: choose Opus 5 over Opus 4.8, but do not replace GPT-5.6 Luna with GPT-5.6 Sol or GPT-6 Astra, or Claude Opus 5 with Claude Fable 5.1.
 
 Cursor workers may use only Grok, Composer, or Fable model families. Do not select any other model family for Cursor, even if `cursor-agent --list-models` lists it.
 
@@ -108,6 +113,10 @@ The skill (`skill/SKILL.md`) is the full reference. Quick form:
 orchestrator spawn devin  --model swe-1-7 -- "implement /api/orders in src/api/orders.ts"
 orchestrator spawn devin  --model glm-5.2 -- "implement a routine isolated unit"
 orchestrator spawn codex  --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
+orchestrator spawn codex  --model gpt-6-astra --effort xhigh -- "implement an irreversible ABI or schema change"
+orchestrator spawn claude --model claude-fable-5-1[1m] --effort xhigh -- "write an ADR for a new shared cache module; design the public API; DO NOT implement"
+orchestrator spawn claude --model claude-fable-5-1[1m] --effort xhigh -- "review the ADR for the shared cache module; report findings only, do not implement"
+orchestrator spawn codex  --model gpt-6-astra --effort xhigh -- "implement the hot-path lookup in the shared cache; the performance of this code matters"
 orchestrator spawn cursor --model cursor-grok-4.6-medium --effort medium -- "build OrdersForm in src/ui/OrdersForm.tsx"
 orchestrator spawn cursor --model cursor-grok-4.6-medium --effort xhigh -- "implement a difficult architecture change"
 orchestrator spawn claude --model claude-opus-5 --effort high -- "review a difficult architecture change; report findings only, do not edit files"
