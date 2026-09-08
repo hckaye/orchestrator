@@ -42,13 +42,13 @@ Node.js（開発時は v25 を使用）と、使用する Agent CLI（`devin`、
 
 | worker  | CLI            | 既定のモデル       | effort                | パーミッション          |
 |---------|----------------|---------------------|-----------------------|---------------------|
-| devin   | `devin`        | `swe-1-7`           | 非対応                | `dangerous`（自動）  |
+| devin   | `devin`        | `glm-5.2`           | 非対応                | `dangerous`（自動）  |
 | codex   | `codex`        | `gpt-5.6-luna`      | `max`                 | 承認をバイパス       |
 | cursor  | `cursor-agent` | `cursor-grok-4.6-medium` | `medium`          | `--yolo`             |
 | claude  | `claude`       | `claude-opus-5`     | `high`                | `bypassPermissions` |
 | grok    | `grok`         | `grok-4.6`          | `medium`              | `always-approve`     |
 
-Commander の既定モデルは `claude-fable-5-1[1m]`、effort は `high` です。代わりに `gpt-5.6-sol` と `xhigh` も選択できます。統合ブランチのテンプレートは `integrate/${task}`、ベースブランチは `main` です。
+Commander の既定モデルは `claude-fable-5-1[1m]`、effort は `high` です。代わりに `gpt-6-astra` と `medium` も選択できます。統合ブランチのテンプレートは `integrate/${task}`、ベースブランチは `main` です。
 
 worker ごとのモデルは `--model`、effort は `--effort` で起動時に変更できます。
 
@@ -58,8 +58,8 @@ worker ごとのモデルは `--model`、effort は `--effort` で起動時に�
 
 | 実装単位 | 既定の worker 候補 |
 |---|---|
-| 定型的な作業 | Cursor Grok 4.6 の `medium`、Grok CLI Grok 4.6 の `medium`、Devin SWE-1.7、GLM 5.2、最後の候補として Codex GPT-5.6 Luna の `xhigh` |
-| 影響範囲が広い、重要、または難しい作業 | Cursor Grok 4.6 の `xhigh`、Grok CLI Grok 4.6 の `xhigh`、Codex GPT-5.6 Luna の `max` |
+| 定型的な作業 | Cursor Grok 4.6 の `medium`、Grok CLI Grok 4.6 の `medium`、Devin GLM 5.2、最後の候補として Codex GPT-5.6 Luna の `xhigh` |
+| 影響範囲が広い、重要、または難しい作業 | Cursor Grok 4.6 の `xhigh`、Grok CLI Grok 4.6 の `xhigh`、Codex GPT-5.6 Terra の `xhigh` |
 | 間違えた場合に元に戻せない作業 | Codex GPT-6 Astra の `xhigh`、Claude Fable 5.1 の `xhigh` |
 
 元に戻せない作業向けのモデルは、固定済みのフォーマット、ABI スキーマ、生成される契約の変更、健全性の中核、公開 ABI の変更など、通常の方法では失敗から復旧できない場合だけに使用します。単に難しいだけの作業には、中段のモデルを使用します。
@@ -77,7 +77,7 @@ Claude Opus は原則として実装ではなくレビューに使用します�
 
 Cursor Grok 4.6 と Grok CLI Grok 4.6 は別のプロバイダーで、並列処理の枠も独立しています。そのため、同じ段階の作業に両方を割り振れます。定型的な作業では両方とも `medium`、中段では両方とも `xhigh` を使用します。Cursor Grok と Grok CLI には、orchestrator 全体の並列数制限はありません。Devin と GLM 5.2 は、プロジェクト全体で実装用 worker を 5 個まで同時に使用できます。レビュー用途はこの制限に含みません。
 
-Commander には Claude Fable 5.1 1M の `high` または GPT-5.6 Sol の `xhigh` を使用します。設定上の既定値は Fable/high で、Sol/xhigh も選択できます。`commander` の設定は参考値です。orchestrator は呼び出し元のセッションを起動したり置き換えたりしないため、利用環境が対応している場合は、セッション開始時にどちらかのモデルを選択してください。上記の 3 段階は、割り振り先の worker に適用します。Commander には適用しません。
+Commander には Claude Fable 5.1 1M の `high` または GPT-6 Astra の `medium` を使用します。設定上の既定値は Fable/high で、Astra/medium も選択できます。`commander` の設定は参考値です。orchestrator は呼び出し元のセッションを起動したり置き換えたりしないため、利用環境が対応している場合は、セッション開始時にどちらかのモデルを選択してください。上記の 3 段階は、割り振り先の worker に適用します。Commander には適用しません。
 
 ### モデルと effort の指定
 
@@ -110,7 +110,7 @@ orchestrator spawn codex --model gpt-5.6-luna --effort max -- "implement an impo
 詳しい仕様は `skill/SKILL.md` にあります。主なコマンドは次のとおりです。
 
 ```bash
-orchestrator spawn devin  --model swe-1-7 -- "implement /api/orders in src/api/orders.ts"
+orchestrator spawn devin  --model glm-5.2 -- "implement /api/orders in src/api/orders.ts"
 orchestrator spawn devin  --model glm-5.2 -- "implement a routine isolated unit"
 orchestrator spawn codex  --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
 orchestrator spawn codex  --model gpt-6-astra --effort xhigh -- "implement an irreversible ABI or schema change"

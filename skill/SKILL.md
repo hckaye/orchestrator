@@ -15,12 +15,12 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
 
 1. Confirm `orchestrator` is on PATH. If not, it lives at `~/.orchestrator/orchestrator.js`; run `node ~/.orchestrator/orchestrator.js`.
 2. Read config: `orchestrator config show`. Defaults:
-   - devin → model `swe-1-7` (no effort option)
+   - devin → model `glm-5.2` (no effort option)
    - codex → model `gpt-5.6-luna`, effort `max`
    - cursor → model `cursor-grok-4.6-medium`, effort `medium`
    - claude → model `claude-opus-5`, effort `high`
    - grok → model `grok-4.6`, effort `medium`
-   - commander (the invoking agent/session) → model `claude-fable-5-1[1m]`, effort `high`; alternatively `gpt-5.6-sol`, effort `xhigh`
+   - commander (the invoking agent/session) → model `claude-fable-5-1[1m]`, effort `high`; alternatively `gpt-6-astra`, effort `medium`
    - integration branch template: `integrate/${task}`, base: `main`
 3. All worker CLIs (`devin`, `claude`, `codex`, `cursor-agent`, `grok`) must be installed and authenticated. Verify with `which devin claude codex cursor-agent grok`.
 
@@ -28,8 +28,8 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
 
 | Role | CLI | Default model | Effort |
 |---|---|---|---|
-| Commander | Invoking agent/session | Fable 5.1 1M / GPT-5.6 Sol | high / xhigh |
-| Worker: devin | `devin -p` | SWE 1.7 | not supported |
+| Commander | Invoking agent/session | Fable 5.1 1M / GPT-6 Astra | high / medium |
+| Worker: devin | `devin -p` | GLM 5.2 | not supported |
 | Worker: codex | `codex exec` | GPT-5.6 Luna | max |
 | Worker: cursor | `cursor-agent -p` | Cursor Grok 4.6 | medium |
 | Worker: claude | `claude -p` | Opus 5.0 | high |
@@ -43,8 +43,8 @@ Before dispatch, classify each implementation unit and use a suitable available 
 
 | Unit | Worker choices |
 |---|---|
-| Routine | Cursor Grok 4.6 at `medium`; Grok CLI Grok 4.6 at `medium`; Devin SWE-1.7; GLM 5.2; Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
-| Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Luna at `max` |
+| Routine | Cursor Composer 2.5; Devin GLM 5.2; Grok CLI Grok 4.6 at `low`; Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
+| Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Terra at `xhigh` |
 | Irreversible if wrong | Codex GPT-6 Astra at `xhigh`; Claude Fable 5.1 at `xhigh` |
 
 Use the irreversible tier only when an incorrect result cannot be recovered normally: frozen formats, ABI schemas, generated-contract changes, core soundness, or public ABI changes. A unit that is merely difficult belongs in the middle tier.
@@ -62,7 +62,7 @@ Use Claude Opus primarily as a reviewer, not as an implementation worker. It may
 
 Cursor Grok 4.6 means Grok through `cursor-agent`; Grok CLI Grok 4.6 means the official `grok` CLI. They are separate providers with independent capacity and may run concurrently. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin and GLM 5.2 share a maximum of five concurrent implementation workers across projects; reviewer use is unlimited.
 
-Use either Claude Fable 5.1 1M at `high` or GPT-5.6 Sol at `xhigh` for the Commander; Fable/high is the config default and Sol/xhigh is its alternative. The current process is the Commander and orchestrator cannot change its model after launch, so select one of these models when starting the invoking session when the host permits it. Do not apply worker tiers to the Commander.
+Use either Claude Fable 5.1 1M at `high` or GPT-6 Astra at `medium` for the Commander; Fable/high is the config default and Astra/medium is its alternative. The current process is the Commander and orchestrator cannot change its model after launch, so select one of these models when starting the invoking session when the host permits it. Do not apply worker tiers to the Commander.
 
 ## Model and effort flags — important
 
@@ -415,7 +415,7 @@ orchestrator archive --older-than 1d            # bulk-clean old finished worker
 ## Quick reference
 
 ```bash
-orchestrator spawn devin --model swe-1-7 -- "implement /api/orders endpoint in src/api/orders.ts"
+orchestrator spawn devin --model glm-5.2 -- "implement /api/orders endpoint in src/api/orders.ts"
 orchestrator spawn devin --model glm-5.2 -- "implement a routine isolated unit"
 orchestrator spawn codex --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
 orchestrator spawn codex --model gpt-6-astra --effort xhigh -- "implement an irreversible ABI or schema change"

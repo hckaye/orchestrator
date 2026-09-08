@@ -89,8 +89,8 @@ test("model-selection defaults expose the approved commander choices and worker 
     defaultModel: "claude-fable-5-1[1m]",
     thinkingLevel: "high",
     alternatives: [{
-      model: "gpt-5.6-sol",
-      thinkingLevel: "xhigh",
+      model: "gpt-6-astra",
+      thinkingLevel: "medium",
     }],
   });
 });
