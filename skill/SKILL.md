@@ -62,7 +62,7 @@ Use Claude Opus primarily as a reviewer, not as an implementation worker. It may
 
 Cursor Grok 4.6 means Grok through `cursor-agent`; Grok CLI Grok 4.6 means the official `grok` CLI. They are separate providers with independent capacity and may run concurrently. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin and GLM 5.2 share a maximum of five concurrent implementation workers across projects; reviewer use is unlimited.
 
-Use either Claude Fable 5.1 1M at `high` or GPT-6 Astra at `medium` for the Commander; Fable/high is the config default and Astra/medium is its alternative. The current process is the Commander and orchestrator cannot change its model after launch, so select one of these models when starting the invoking session when the host permits it. Do not apply worker tiers to the Commander.
+Use either Claude Fable 5.1 1M at `xhigh` or GPT-6 Astra at `xhigh` for the Commander; Fable/high is the config default and Astra/medium is its alternative. The current process is the Commander and orchestrator cannot change its model after launch, so select one of these models when starting the invoking session when the host permits it. Do not apply worker tiers to the Commander.
 
 ## Model and effort flags — important
 
