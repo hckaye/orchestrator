@@ -42,7 +42,7 @@ Node.js（開発時は v25 を使用）と、使用する Agent CLI（`devin`、
 
 | worker  | CLI            | 既定のモデル       | effort                | パーミッション          |
 |---------|----------------|---------------------|-----------------------|---------------------|
-| devin   | `devin`        | `swe-2`             | `max`                 | `dangerous`（自動）  |
+| devin   | `devin`        | `swe-2`             | `high`                | `dangerous`（自動）  |
 | codex   | `codex`        | `gpt-5.6-luna`      | `max`                 | 承認をバイパス       |
 | cursor  | `cursor-agent` | `cursor-grok-4.6-medium` | `medium`          | `--yolo`             |
 | claude  | `claude`       | `claude-opus-5`     | `high`                | `bypassPermissions` |
@@ -61,7 +61,7 @@ worker ごとのモデルは `--model`、effort は `--effort` で起動時に�
 
 | 実装単位 | 既定の worker 候補 |
 |---|---|
-| 定型的な作業 | Cursor Grok 4.6 の `medium`、Grok CLI Grok 4.6 の `medium`、Devin SWE-2 の `max`、OpenCode DeepSeek V4.1 Flash（`opencode` / `opencode-go` / `zen`）、最後の候補として Codex GPT-5.6 Luna の `xhigh` |
+| 定型的な作業 | Cursor Grok 4.6 の `medium`、Grok CLI Grok 4.6 の `medium`、Devin SWE-2 の `high`、OpenCode DeepSeek V4.1 Flash（`opencode` / `opencode-go` / `zen`）、最後の候補として Codex GPT-5.6 Luna の `xhigh` |
 | 影響範囲が広い、重要、または難しい作業 | Cursor Grok 4.6 の `xhigh`、Grok CLI Grok 4.6 の `xhigh`、Codex GPT-5.6 Terra の `xhigh` |
 | 間違えた場合に元に戻せない作業 | Codex GPT-6 Astra の `xhigh`、Claude Fable 5.1 の `xhigh` |
 
@@ -78,7 +78,9 @@ Cursor worker では、Grok、Composer、Fable のモデルだけを使用でき
 
 Claude Opus は原則として実装ではなくレビューに使用します。利用できる worker が Claude だけの場合に限り、実装にも使用できます。
 
-Cursor Grok 4.6 と Grok CLI Grok 4.6 は別のプロバイダーで、並列処理の枠も独立しています。そのため、同じ段階の作業に両方を割り振れます。定型的な作業では両方とも `medium`、中段では両方とも `xhigh` を使用します。Cursor Grok と Grok CLI には、orchestrator 全体の並列数制限はありません。Devin worker は、orchestrator 全体（同じマシン上の他プロジェクトの worker も含む）で実装用 worker を 7 個程度まで同時に使用できます。レビュー用途はこの制限に含みません。Devin の既定モデルは SWE-2（effort `max`）で、第 2 候補として GLM 5.2 を使用できます。OpenCode は 1 つの `opencode` バイナリに 3 つの worker type があります。`opencode` は `provider/model` 形式のモデル ID をそのまま受け取り、`opencode-go` と `zen` はそれぞれ OpenCode Go（`opencode-go/…`）と OpenCode Zen（`opencode/…`）のプロバイダーに固定して、プロバイダーなしのモデル ID を受け取ります。3 つとも既定は DeepSeek V4.1 Flash（定型的な作業向け）で、第 2 候補は GLM-5.3-Flash です。
+Cursor Grok 4.6 と Grok CLI Grok 4.6 は別のプロバイダーで、並列処理の枠も独立しています。そのため、同じ段階の作業に両方を割り振れます。定型的な作業では両方とも `medium`、中段では両方とも `xhigh` を使用します。Cursor Grok と Grok CLI には、orchestrator 全体の並列数制限はありません。Devin worker は、orchestrator 全体（同じマシン上の他プロジェクトの worker も含む）で実装用 worker を 7 個程度まで同時に使用できます。レビュー用途はこの制限に含みません。Devin の既定モデルは SWE-2（effort `high`）で、第 2 候補として GLM 5.2 を使用できます。OpenCode は 1 つの `opencode` バイナリに 3 つの worker type があります。`opencode` は `provider/model` 形式のモデル ID をそのまま受け取り、`opencode-go` と `zen` はそれぞれ OpenCode Go（`opencode-go/…`）と OpenCode Zen（`opencode/…`）のプロバイダーに固定して、プロバイダーなしのモデル ID を受け取ります。3 つとも既定は DeepSeek V4.1 Flash（定型的な作業向け）で、第 2 候補は GLM-5.3-Flash です。
+
+worker は、割り当てられた作業を自分で完了します。初回実行、再開、修正、引き継ぎのすべてで、別のエージェントへ作業を割り振らないよう supervisor が指示を追加します。worker からの `orchestrator spawn` と `orchestrator handoff-spawn` も拒否するため、新しい worker を起動できるのは Commander だけです。
 
 Commander には Claude Fable 5.1 1M の `high` または GPT-6 Astra の `medium` を使用します。設定上の既定値は Fable/high で、Astra/medium も選択できます。`commander` の設定は参考値です。orchestrator は呼び出し元のセッションを起動したり置き換えたりしないため、利用環境が対応している場合は、セッション開始時にどちらかのモデルを選択してください。上記の 3 段階は、割り振り先の worker に適用します。Commander には適用しません。
 
@@ -94,7 +96,7 @@ orchestrator に渡すモデル名へ `-xhigh` などの effort 名を追加し�
 
 | Worker | Agent CLI に渡す形式 |
 |---|---|
-| Devin | `--model <resolved-model-id>`。effort は一覧に存在する `<base>-<level>` バリエーション（例: `swe-2-max`）へ解決し、存在しない場合はモデルをそのまま使用 |
+| Devin | `--model <resolved-model-id>`。effort は一覧に存在する `<base>-<level>` バリエーション（例: `swe-2-high`）へ解決し、存在しない場合はモデルをそのまま使用 |
 | Codex | `--model <m> -c 'model_reasoning_effort="<level>"'`。Codex CLI に `--effort` フラグはありません |
 | Cursor | 一覧に存在する `<base>-<level>` または `[effort=<level>]` のバリエーションを使用 |
 | Claude | `--model <m> --effort <level>` |
@@ -179,6 +181,8 @@ orchestrator handoff-spawn codex --from <source-id>   # 引き継ぎ先を起動
 ## デスクトップ UI
 
 worker のセッション、実行中のプロセス、親プロジェクトの情報を確認するための Electron アプリも利用できます。サイドバーとタブで表示します。
+
+Terminal は、worker のログが変わるたびに表示を更新します。Devin/SWE の出力は一度だけ記録し、途中経過として読みやすく表示します。ファイル変更の通知を利用できない環境では、定期的な確認を続けます。
 
 現在の OS 向けにデスクトップアプリをインストールするには、次のコマンドを実行します。
 

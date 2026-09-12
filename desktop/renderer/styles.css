@@ -1041,6 +1041,11 @@ kbd {
   white-space: pre-wrap;
 }
 
+.sf-progress {
+  border-left: 2px solid #476b58;
+  padding-left: 10px;
+}
+
 .sf-thinking .sf-label {
   color: #6b7a90;
 }

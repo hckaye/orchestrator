@@ -15,6 +15,7 @@ import {
   workerSockUsesFilesystem as desktopWorkerSockUsesFilesystem,
 } from "../desktop/electron/lib/paths.js";
 import { pingWorker } from "../desktop/electron/lib/actions.js";
+import { WorkerWatcher } from "../desktop/electron/lib/workers.js";
 
 function listen(server, endpoint) {
   return new Promise((resolve, reject) => {
@@ -95,5 +96,30 @@ test("Desktop ping connects to a Windows named pipe without a filesystem probe",
     assert.deepEqual(await pingWorker(id), { ok: true });
   } finally {
     if (server.listening) await close(server);
+  }
+});
+
+test("Desktop watcher reports worker log changes", async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrator-watch-"));
+  const workersDir = path.join(temp, "workers");
+  const logsDir = path.join(temp, "logs");
+  const watcher = new WorkerWatcher({ debounceMs: 20, workersDir, logsDir });
+  try {
+    const changed = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("log change was not reported")), 2000);
+      watcher.on("change", (payload) => {
+        if (!payload.logIds?.includes("devin-test")) return;
+        clearTimeout(timer);
+        resolve(payload);
+      });
+    });
+    watcher.start();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    fs.writeFileSync(path.join(logsDir, "devin-test.log"), "progress");
+    const payload = await changed;
+    assert.deepEqual(payload.logIds, ["devin-test"]);
+  } finally {
+    watcher.stop();
+    fs.rmSync(temp, { recursive: true, force: true });
   }
 });

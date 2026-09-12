@@ -176,10 +176,19 @@ app.whenReady().then(() => {
   createWindow();
 
   watcher = new workers.WorkerWatcher({ debounceMs: 300 });
-  watcher.on("change", ({ ids }) => {
-    if (ids?.length) workers.invalidateSummaryCache(ids);
-    else workers.invalidateSummaryCache();
-    pushWorkersSnapshot(ids);
+  watcher.on("change", ({ ids, logIds }) => {
+    if (ids?.length) {
+      workers.invalidateSummaryCache(ids);
+      pushWorkersSnapshot(ids);
+    }
+    if (logIds?.length) {
+      send("workers:logsChanged", { ids: logIds, at: new Date().toISOString() });
+    }
+    if (!ids && !logIds) {
+      workers.invalidateSummaryCache();
+      pushWorkersSnapshot();
+      send("workers:logsChanged", { ids: null, at: new Date().toISOString() });
+    }
   });
   watcher.on("error", (e) => console.error("watcher error", e));
   watcher.start();

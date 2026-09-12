@@ -172,6 +172,17 @@ export function formatStreamLog(rawLog, opts = {}) {
     lastRawJson = null;
     // plain text line
     flushStreams();
+    if (opts.workerType === "devin") {
+      const progress = formatDevinProgress(line);
+      pushBlock({
+        kind: "progress",
+        html: `<div class="sf-block sf-progress">
+          <div class="sf-label">progress</div>
+          <div class="sf-body">${esc(progress)}</div>
+        </div>`,
+      });
+      continue;
+    }
     // error-looking
     const cls = /\b(error|failed|exception|ActionRequiredError)\b/i.test(line)
       ? "sf-err"
@@ -206,6 +217,12 @@ export function formatStreamLog(rawLog, opts = {}) {
     slice.map((b) => b.html).join("") +
     (live ? '<span class="term-cursor"></span>' : "")
   );
+}
+
+function formatDevinProgress(line) {
+  return collapseDupRuns(line)
+    .replace(/([.!?。])(?=(?:Now|Next|Let|This|The|All|No|I(?:'|’)?ll)\b)/g, "$1\n")
+    .trim();
 }
 
 function collapseDupRuns(s) {

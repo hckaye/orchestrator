@@ -15,7 +15,7 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
 
 1. Confirm `orchestrator` is on PATH. If not, it lives at `~/.orchestrator/orchestrator.js`; run `node ~/.orchestrator/orchestrator.js`.
 2. Read config: `orchestrator config show`. Defaults:
-   - devin → model `swe-2`, effort `max` (spawned as `swe-2-max`); `glm-5.2` is the second option
+   - devin → model `swe-2`, effort `high` (spawned as `swe-2-high`); `glm-5.2` is the second option
    - codex → model `gpt-5.6-luna`, effort `max`
    - cursor → model `cursor-grok-4.6-medium`, effort `medium`
    - claude → model `claude-opus-5`, effort `high`
@@ -32,7 +32,7 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
 | Role | CLI | Default model | Effort |
 |---|---|---|---|
 | Commander | Invoking agent/session | Fable 5.1 1M / GPT-6 Astra | high / medium |
-| Worker: devin | `devin -p` | SWE-2 | max |
+| Worker: devin | `devin -p` | SWE-2 | high |
 | Worker: codex | `codex exec` | GPT-5.6 Luna | max |
 | Worker: cursor | `cursor-agent -p` | Cursor Grok 4.6 | medium |
 | Worker: claude | `claude -p` | Opus 5.0 | high |
@@ -49,7 +49,7 @@ Before dispatch, classify each implementation unit and use a suitable available 
 
 | Unit | Worker choices |
 |---|---|
-| Routine | Cursor Composer 2.5; Devin SWE-2 at `max`; Grok CLI Grok 4.6 at `low`; OpenCode DeepSeek V4.1 Flash (`opencode` / `opencode-go` / `zen`); Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
+| Routine | Cursor Composer 2.5; Devin SWE-2 at `high`; Grok CLI Grok 4.6 at `low`; OpenCode DeepSeek V4.1 Flash (`opencode` / `opencode-go` / `zen`); Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
 | Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Terra at `xhigh` |
 | Irreversible if wrong | Codex GPT-6 Astra at `xhigh`; Claude Fable 5.1 at `xhigh` |
 
@@ -66,7 +66,7 @@ Cursor workers may use only Grok, Composer, or Fable model families. Do not sele
 
 Use Claude Opus primarily as a reviewer, not as an implementation worker. It may implement only when Claude is the only usable worker provider.
 
-Cursor Grok 4.6 means Grok through `cursor-agent`; Grok CLI Grok 4.6 means the official `grok` CLI. They are separate providers with independent capacity and may run concurrently. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin workers share a maximum of about seven concurrent implementation workers across the entire orchestrator — that count includes Devin workers spawned for other projects on this machine; reviewer use is unlimited. Devin runs SWE-2 at `max` effort by default, with GLM 5.2 (`--model glm-5.2`) as the second option.
+Cursor Grok 4.6 means Grok through `cursor-agent`; Grok CLI Grok 4.6 means the official `grok` CLI. They are separate providers with independent capacity and may run concurrently. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin workers share a maximum of about seven concurrent implementation workers across the entire orchestrator; that count includes Devin workers spawned for other projects on this machine, while reviewer use is unlimited. Devin runs SWE-2 at `high` effort by default, with GLM 5.2 (`--model glm-5.2`) as the second option.
 
 OpenCode is three worker types over one binary: `opencode` takes a full `provider/model` id, while `opencode-go` and `zen` pin the OpenCode Go (`opencode-go/`) and OpenCode Zen (`opencode/`) providers and take a bare model id. They share the `opencode` CLI's own parallelism; treat them as one provider for capacity purposes. All three default to DeepSeek V4.1 Flash (routine tier), with GLM-5.3-Flash as the second option.
 
@@ -86,7 +86,7 @@ The actual translation is different for each CLI:
 
 | Worker | Underlying model/effort form | Important detail |
 |---|---|---|
-| Devin | `devin ... --model <resolved-id>` | Devin has no effort flag; the adapter resolves `--effort max` to a listed model variant such as `swe-2-max`. Models without a listed effort variant (e.g. `swe-1-6`, `adaptive`) remain unchanged. |
+| Devin | `devin ... --model <resolved-id>` | Devin has no effort flag; the adapter resolves `--effort high` to a listed model variant such as `swe-2-high`. Models without a listed effort variant (e.g. `swe-1-6`, `adaptive`) remain unchanged. |
 | Codex | `codex exec --model <m> -c 'model_reasoning_effort="<level>"' ...` | Codex CLI does not accept `--effort`; use the orchestrator option and let it produce `-c`. |
 | Cursor | `cursor-agent ... --model <resolved-id>` | The adapter resolves `--effort xhigh` to a listed model such as `<base>-xhigh`, or to `[effort=xhigh]` for a parameterized model. `composer-2.5` remains unchanged because it has no effort variants. |
 | Claude | `claude ... --model <m> --effort <level>` | Effort is a separate CLI flag. |
@@ -122,7 +122,7 @@ orchestrator spawn <type> [--model <m>] [--interactive] -- <task brief>
 
 The CLI prints a worker **ID**. Add it to the roster immediately (unit → id → status `running` → reviewed/merged/archived `no`). The worker:
 1. Creates a git worktree `worker/<slug>` off the base branch.
-2. Launches the worker CLI in that worktree with the brief + a constraints suffix (work only in your worktree, commit locally, do not push/PR, end with `DONE:` or `BLOCKED:`).
+2. Launches the worker CLI in that worktree with the brief and constraints. The worker must complete the unit itself and cannot create subagents, subworkers, or other coding agents. It must also work only in its worktree, commit locally, avoid push/PR, and end with `DONE:` or `BLOCKED:`.
 3. Writes state to `~/.orchestrator/workers/<id>.json` and logs to `~/.orchestrator/logs/<id>.log`.
 
 Dispatch independent workers in parallel (multiple `orchestrator spawn` calls in one tool block).
@@ -415,6 +415,7 @@ orchestrator archive --older-than 1d --dry-run  # preview leftovers only
 
 - **You are the commander.** Do not implement the units yourself. If a unit is tiny (one-line fix), just do it directly and skip the orchestrator.
 - **Use only the `orchestrator` CLI** to manage these workers.
+- **Workers cannot delegate.** A worker must not create subagents, subworkers, or other coding agents. The CLI rejects `spawn` and `handoff-spawn` when they are invoked from a worker process.
 - **Spawn is not completion.** After every `spawn` / `resume` / `revise` / `handoff-spawn`, you **must** enter (or continue) Phase 2 monitoring with `wait`. Dispatch-only, “workers launched,” or ending the turn without arming waits is a hard failure — workers never push completion into your session by themselves.
 - **Pipeline, don't barrier.** Review/revise/merge each worker as soon as *it* finishes. Never wait for the entire parallel cohort before acting on early finishers.
 - **Never drop wait coverage.** Every still-running worker must be covered by an active background wait (Pattern A) or the next short-timeout reconcile iteration (Pattern B). After handling one completion, re-arm / re-check the rest.

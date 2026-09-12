@@ -3,7 +3,8 @@ import path from "node:path";
 
 const NPM_COMMANDS = new Set(["npm", "npx"]);
 const DEVIN_DEFAULT_MODEL = "swe-2";
-const DEVIN_DEFAULT_EFFORT = "max";
+const DEVIN_DEFAULT_EFFORT = "high";
+const PREVIOUS_DEVIN_DEFAULT_EFFORT = "max";
 const PREVIOUS_DEVIN_DEFAULT_MODELS = new Set(["glm-5.2", "glm-5-2"]);
 const CURSOR_DEFAULT_MODEL = "cursor-grok-4.6-medium";
 const CURSOR_DEFAULT_EFFORT = "medium";
@@ -72,7 +73,11 @@ export function updateConfigDefaults(config) {
     config.workers.devin.defaultModel = DEVIN_DEFAULT_MODEL;
     changed = true;
   }
-  if (!config.workers.devin.defaultEffort) {
+  if (
+    !config.workers.devin.defaultEffort ||
+    (config.workers.devin.defaultModel === DEVIN_DEFAULT_MODEL &&
+      config.workers.devin.defaultEffort === PREVIOUS_DEVIN_DEFAULT_EFFORT)
+  ) {
     config.workers.devin.defaultEffort = DEVIN_DEFAULT_EFFORT;
     changed = true;
   }

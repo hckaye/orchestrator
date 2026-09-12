@@ -1737,6 +1737,18 @@ function applyProcessesPayload(payload) {
   }
 }
 
+function applyLogsChanged(payload) {
+  if (document.hidden || !state.activeTab) return;
+  const changed = Array.isArray(payload?.ids) ? new Set(payload.ids) : null;
+  if (isMuxTab(state.activeTab)) {
+    visibleMuxWorkers(state.activeTab)
+      .filter((worker) => !changed || changed.has(worker.id))
+      .forEach((worker) => ensureLog(worker.id));
+    return;
+  }
+  if (!changed || changed.has(state.activeTab)) ensureLog(state.activeTab);
+}
+
 // —— controls ——
 function bindControls() {
   $("#search").addEventListener("input", (e) => {
@@ -1793,6 +1805,7 @@ async function init() {
   startLogPolling();
 
   api.onWorkersUpdate(applyWorkersPayload);
+  api.onLogsChanged(applyLogsChanged);
   api.onProcessesUpdate(applyProcessesPayload);
 
   try {

@@ -23,6 +23,11 @@ import { applyCursorModelEffort, applyDevinModelEffort, pickWorkerRuntime } from
 import { buildCommand, buildResumeCommand, extractSessionId } from "../orchestrator/lib/cli-adapters.js";
 import { moduleDirectory } from "../orchestrator/lib/paths.js";
 import { buildOrchestratorInvocation } from "../desktop/electron/lib/orchestrator-process.js";
+import {
+  buildWorkerPrompt,
+  nestedSpawnError,
+  workerEnvironment,
+} from "../orchestrator/lib/worker-context.js";
 
 const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const cli = path.join(repoRoot, "orchestrator", "orchestrator.js");
@@ -72,7 +77,7 @@ test("model-selection defaults expose the approved commander choices and worker 
 
   assert.deepEqual(pickWorkerRuntime(config, "devin"), {
     model: "swe-2",
-    effort: "max",
+    effort: "high",
   });
   assert.deepEqual(pickWorkerRuntime(config, "codex"), {
     model: "gpt-5.6-luna",
@@ -124,7 +129,7 @@ test("installer upgrades previous model defaults without replacing custom choice
   };
   assert.equal(updateConfigDefaults(legacy), true);
   assert.equal(legacy.workers.devin.defaultModel, "swe-2");
-  assert.equal(legacy.workers.devin.defaultEffort, "max");
+  assert.equal(legacy.workers.devin.defaultEffort, "high");
   assert.equal(legacy.workers.cursor.defaultModel, "cursor-grok-4.6-medium");
   assert.equal(legacy.workers.cursor.defaultEffort, "medium");
   assert.equal(legacy.workers.grok.defaultModel, "grok-4.6");
@@ -140,6 +145,12 @@ test("installer upgrades previous model defaults without replacing custom choice
   const legacyVariant = { workers: { devin: { defaultModel: "glm-5-2" } } };
   assert.equal(updateConfigDefaults(legacyVariant), true);
   assert.equal(legacyVariant.workers.devin.defaultModel, "swe-2");
+
+  const previousSweDefault = {
+    workers: { devin: { defaultModel: "swe-2", defaultEffort: "max" } },
+  };
+  assert.equal(updateConfigDefaults(previousSweDefault), true);
+  assert.equal(previousSweDefault.workers.devin.defaultEffort, "high");
 
   const custom = {
     workers: {
@@ -166,6 +177,32 @@ test("installer upgrades previous model defaults without replacing custom choice
   assert.equal(custom.workers["opencode-go"].defaultModel, "custom-go-model");
   assert.equal(custom.workers.zen.defaultModel, "custom-zen-model");
   assert.equal(custom.commander.defaultModel, "gpt-5.6-sol");
+});
+
+test("worker prompts and environment prohibit nested worker dispatch", () => {
+  const prompt = buildWorkerPrompt("implement the change", "Keep edits scoped.");
+  assert.match(prompt, /implement the change/);
+  assert.match(prompt, /Keep edits scoped/);
+  assert.match(prompt, /Do not create or delegate to subagents, subworkers, or other coding agents/);
+  assert.match(prompt, /orchestrator spawn/);
+
+  const env = workerEnvironment("devin-test", { PATH: "/bin" });
+  assert.equal(env.ORCHESTRATOR_WORKER_ID, "devin-test");
+  assert.match(nestedSpawnError("spawn", env), /cannot start another worker/);
+  assert.match(nestedSpawnError("handoff-spawn", env), /cannot start another worker/);
+  assert.equal(nestedSpawnError("status", env), null);
+  assert.equal(nestedSpawnError("spawn", {}), null);
+
+  const nested = spawnSync(
+    process.execPath,
+    [cli, "spawn", "devin", "--no-worktree", "--", "do not run"],
+    {
+      encoding: "utf8",
+      env: { ...process.env, ORCHESTRATOR_WORKER_ID: "devin-parent" },
+    }
+  );
+  assert.equal(nested.status, 2);
+  assert.match(nested.stderr, /worker devin-parent cannot start another worker/);
 });
 
 test("Devin effort resolves to the listed <base>-<level> model variant", () => {
@@ -324,6 +361,15 @@ test("stream formatter retains only the configured number of rendered blocks", (
   assert.ok((html.match(/sf-block/g) || []).length <= 81);
   assert.match(html, /line 4999/);
   assert.doesNotMatch(html, /line 0</);
+});
+
+test("stream formatter makes legacy duplicated Devin progress readable", () => {
+  const input = "LetLet me me inspect inspect the the files files. NowNow I have I have the the result result.";
+  const html = formatStreamLog(input, { workerType: "devin", maxBlocks: 80 });
+  assert.match(html, /sf-progress/);
+  assert.match(html, /Let me inspect the files\./);
+  assert.match(html, /Now I have the result\./);
+  assert.doesNotMatch(html, /LetLet|NowNow| me me | result result/);
 });
 
 test("desktop installer preserves relative framework symlinks", {

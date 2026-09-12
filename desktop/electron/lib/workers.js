@@ -5,6 +5,7 @@ import { EventEmitter } from "node:events";
 import {
   ensureDirs,
   WORKERS_DIR,
+  LOGS_DIR,
   workerFile,
   workerLog,
   workerSock,
@@ -416,23 +417,30 @@ export function groupByRepo(summaries) {
 }
 
 /**
- * Watches workers dir for changes. Emits "change" with { ids? }.
+ * Watches worker state and log directories. Emits "change" with
+ * { ids?, logIds? }.
  * Debounced so bulk writes do not flood the renderer.
  */
 export class WorkerWatcher extends EventEmitter {
-  constructor({ debounceMs = 250 } = {}) {
+  constructor({ debounceMs = 250, workersDir = WORKERS_DIR, logsDir = LOGS_DIR } = {}) {
     super();
     this.debounceMs = debounceMs;
+    this.workersDir = workersDir;
+    this.logsDir = logsDir;
     this._timer = null;
-    this._watcher = null;
+    this._stateWatcher = null;
+    this._logWatcher = null;
     this._dirty = new Set();
+    this._logDirty = new Set();
   }
 
   start() {
     ensureDirs();
-    if (this._watcher) return;
+    fs.mkdirSync(this.workersDir, { recursive: true });
+    fs.mkdirSync(this.logsDir, { recursive: true });
+    if (this._stateWatcher || this._logWatcher) return;
     try {
-      this._watcher = fs.watch(WORKERS_DIR, { persistent: true }, (event, filename) => {
+      this._stateWatcher = fs.watch(this.workersDir, { persistent: true }, (event, filename) => {
         if (!filename) {
           this._schedule();
           return;
@@ -448,10 +456,24 @@ export class WorkerWatcher extends EventEmitter {
           this._schedule();
         }
       });
+      this._logWatcher = fs.watch(this.logsDir, { persistent: true }, (event, filename) => {
+        if (!filename) {
+          this._schedule();
+          return;
+        }
+        if (filename.endsWith(".log")) {
+          this._logDirty.add(path.basename(filename, ".log"));
+          this._schedule();
+        }
+      });
     } catch (e) {
+      try { this._stateWatcher?.close(); } catch { /* ignore */ }
+      try { this._logWatcher?.close(); } catch { /* ignore */ }
+      this._stateWatcher = null;
+      this._logWatcher = null;
       this.emit("error", e);
       // fallback poll
-      this._poll = setInterval(() => this.emit("change", { ids: null }), 2000);
+      this._poll = setInterval(() => this.emit("change", { ids: null, logIds: null }), 2000);
     }
   }
 
@@ -459,8 +481,13 @@ export class WorkerWatcher extends EventEmitter {
     if (this._timer) clearTimeout(this._timer);
     this._timer = setTimeout(() => {
       const ids = [...this._dirty];
+      const logIds = [...this._logDirty];
       this._dirty.clear();
-      this.emit("change", { ids: ids.length ? ids : null });
+      this._logDirty.clear();
+      this.emit("change", {
+        ids: ids.length ? ids : null,
+        logIds: logIds.length ? logIds : null,
+      });
     }, this.debounceMs);
   }
 
@@ -468,10 +495,12 @@ export class WorkerWatcher extends EventEmitter {
     if (this._timer) clearTimeout(this._timer);
     if (this._poll) clearInterval(this._poll);
     try {
-      this._watcher?.close();
+      this._stateWatcher?.close();
+      this._logWatcher?.close();
     } catch {
       /* ignore */
     }
-    this._watcher = null;
+    this._stateWatcher = null;
+    this._logWatcher = null;
   }
 }

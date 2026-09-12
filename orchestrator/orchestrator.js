@@ -16,6 +16,7 @@ import {
   parseAgeMs,
 } from "./lib/archive.js";
 import { moduleDirectory } from "./lib/paths.js";
+import { buildWorkerPrompt, nestedSpawnError } from "./lib/worker-context.js";
 
 const HERE = moduleDirectory(import.meta.url);
 
@@ -237,6 +238,11 @@ function workerRuntimeFromArgs(cfg, type, opts, fallbackState) {
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   if (!cmd) { usage(); process.exit(0); }
+  const nestingError = nestedSpawnError(cmd);
+  if (nestingError) {
+    console.error(nestingError);
+    process.exit(2);
+  }
   const cfg = state.loadConfig();
   const args = parseArgs(rest);
 
@@ -251,7 +257,7 @@ async function main() {
       const base = args.opts.base || cfg.baseBranch || "main";
       const id = state.genId(type);
       const slug = args.opts.worktree || id;
-      const prompt = task + (cfg.promptSuffix || "");
+      const prompt = buildWorkerPrompt(task, cfg.promptSuffix);
       let wt = null;
       if (!args.opts["no-worktree"]) {
         if (!repo) { console.error("not a git repo and --no-worktree not set"); process.exit(2); }
@@ -290,7 +296,7 @@ async function main() {
       }
       const feedback = args._.slice(1).join(" ").trim();
       if (!feedback) { console.error("no feedback provided after --"); process.exit(2); }
-      const revisePrompt = feedback + (cfg.promptSuffix || "");
+      const revisePrompt = buildWorkerPrompt(feedback, cfg.promptSuffix);
       const nextState = clearTerminalState({
         ...s,
         mode: "resume",
@@ -329,7 +335,7 @@ async function main() {
       }
       const userMessage = args._.slice(1).join(" ").trim();
       const continuation = buildContinuationPrompt(s, cfg, userMessage);
-      const resumePrompt = continuation + (cfg.promptSuffix || "");
+      const resumePrompt = buildWorkerPrompt(continuation, cfg.promptSuffix);
       const nextState = clearTerminalState({
         ...s,
         mode: "resume",
@@ -378,7 +384,7 @@ async function main() {
         extra,
       };
       const briefing = buildHandoffBriefing(source, handoffOpts);
-      const prompt = briefing + (cfg.promptSuffix || "");
+      const prompt = buildWorkerPrompt(briefing, cfg.promptSuffix);
       const id = state.genId(type);
       const initState = {
         id,

@@ -6,7 +6,7 @@
     "devin": {
       "cli": "devin",
       "defaultModel": "swe-2",
-      "defaultEffort": "max",
+      "defaultEffort": "high",
       "permissionMode": "dangerous",
       "printMode": true,
       "extraArgs": []

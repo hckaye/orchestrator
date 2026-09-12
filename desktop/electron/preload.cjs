@@ -23,6 +23,11 @@ contextBridge.exposeInMainWorld("orchestrator", {
     ipcRenderer.on("workers:update", handler);
     return () => ipcRenderer.removeListener("workers:update", handler);
   },
+  onLogsChanged: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on("workers:logsChanged", handler);
+    return () => ipcRenderer.removeListener("workers:logsChanged", handler);
+  },
   onProcessesUpdate: (cb) => {
     const handler = (_e, data) => cb(data);
     ipcRenderer.on("processes:update", handler);

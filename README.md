@@ -42,7 +42,7 @@ Defaults in `~/.orchestrator/config.json`:
 
 | worker  | CLI            | default model       | effort                | permission          |
 |---------|----------------|---------------------|-----------------------|---------------------|
-| devin   | `devin`        | `swe-2`             | `max`                 | `dangerous` (auto)  |
+| devin   | `devin`        | `swe-2`             | `high`                | `dangerous` (auto)  |
 | codex   | `codex`        | `gpt-5.6-luna`      | `max`                 | bypass approvals    |
 | cursor  | `cursor-agent` | `cursor-grok-4.6-medium` | `medium`          | `--yolo`            |
 | claude  | `claude`       | `claude-opus-5`     | `high`                | `bypassPermissions` |
@@ -61,7 +61,7 @@ Classify each unit before dispatching it. These are selection defaults, not a re
 
 | Unit | Default worker choices |
 |---|---|
-| Routine | Cursor Grok 4.6 at `medium`; Grok CLI Grok 4.6 at `medium`; Devin SWE-2 at `max`; OpenCode DeepSeek V4.1 Flash (`opencode` / `opencode-go` / `zen`); Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
+| Routine | Cursor Grok 4.6 at `medium`; Grok CLI Grok 4.6 at `medium`; Devin SWE-2 at `high`; OpenCode DeepSeek V4.1 Flash (`opencode` / `opencode-go` / `zen`); Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
 | Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Terra at `xhigh` |
 | Irreversible if wrong | Codex GPT-6 Astra at `xhigh`; Claude Fable 5.1 at `xhigh` |
 
@@ -78,7 +78,9 @@ Cursor workers may use only Grok, Composer, or Fable model families. Do not sele
 
 Use Claude Opus primarily as a reviewer, not as an implementation worker. It may implement only when Claude is the only usable worker provider.
 
-Cursor Grok 4.6 and Grok CLI Grok 4.6 are separate providers with independent parallel capacity, so both may be dispatched in the same tier. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin workers share a limit of about seven concurrent implementation workers across the entire orchestrator, including workers belonging to other projects on the same machine; reviewer use is not part of that limit. Devin runs SWE-2 at `max` effort by default, with GLM 5.2 as the second option. OpenCode contributes three worker types over the single `opencode` binary: `opencode` takes a full `provider/model` id, while `opencode-go` and `zen` pin the OpenCode Go (`opencode-go/…`) and OpenCode Zen (`opencode/…`) providers and take a bare model id. All three default to DeepSeek V4.1 Flash (routine tier) with GLM-5.3-Flash as the second option.
+Cursor Grok 4.6 and Grok CLI Grok 4.6 are separate providers with independent parallel capacity, so both may be dispatched in the same tier. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin workers share a limit of about seven concurrent implementation workers across the entire orchestrator, including workers belonging to other projects on the same machine; reviewer use is not part of that limit. Devin runs SWE-2 at `high` effort by default, with GLM 5.2 as the second option. OpenCode contributes three worker types over the single `opencode` binary: `opencode` takes a full `provider/model` id, while `opencode-go` and `zen` pin the OpenCode Go (`opencode-go/…`) and OpenCode Zen (`opencode/…`) providers and take a bare model id. All three default to DeepSeek V4.1 Flash (routine tier) with GLM-5.3-Flash as the second option.
+
+Workers must complete their assigned unit directly. The supervisor adds this restriction to every initial, resumed, revised, and handed-off prompt. A worker process also cannot run `orchestrator spawn` or `orchestrator handoff-spawn`, so only the Commander can create workers.
 
 Use either Claude Fable 5.1 1M at `high` or GPT-6 Astra at `medium` for the Commander; Fable/high is the config default and Astra/medium is its alternative. The `commander` config entry is advisory because orchestrator does not launch or replace the invoking session, so select one of these models when starting the session when the host supports it. The three tiers above apply to dispatched workers, not to the Commander.
 
@@ -94,7 +96,7 @@ Do not append `-xhigh` (or another effort name) to the model passed to `orchestr
 
 | Worker | Underlying form |
 |---|---|
-| Devin | `--model <resolved-model-id>`; effort resolves to a listed `<base>-<level>` variant (e.g. `swe-2-max`), unchanged when no variant exists |
+| Devin | `--model <resolved-model-id>`; effort resolves to a listed `<base>-<level>` variant (e.g. `swe-2-high`), unchanged when no variant exists |
 | Codex | `--model <m> -c 'model_reasoning_effort="<level>"'`; Codex CLI has no `--effort` flag |
 | Cursor | resolves the model ID to a listed `<base>-<level>` or `[effort=<level>]` variant when available |
 | Claude | `--model <m> --effort <level>` |
@@ -179,6 +181,8 @@ See skill `orchestrator-handoff` for the full workflow. Session memory does not 
 ## Desktop UI
 
 Optional Electron app to inspect worker sessions, live processes, and parent project context (sidebar + tabs).
+
+The terminal view follows worker logs as they change. Devin/SWE output is written once and formatted as progress, avoiding the duplicated text produced by the previous logging path. A periodic poll remains as a fallback when filesystem notifications are unavailable.
 
 Install the desktop app for the current OS:
 

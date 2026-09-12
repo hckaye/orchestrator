@@ -9,6 +9,7 @@ import os from "node:os";
 import * as state from "./state.js";
 import { buildCommand, buildResumeCommand, extractSessionId, resolveCliBin } from "./cli-adapters.js";
 import { detectFailureReason } from "./resume.js";
+import { workerEnvironment } from "./worker-context.js";
 
 const id = process.argv[2];
 if (!id) {
@@ -52,6 +53,7 @@ const cmd = isResume
 
 const resolvedBin = resolveCliBin(cmd.cliBin);
 const childArgv = [...resolvedBin.prefix, ...cmd.argv];
+const childEnv = workerEnvironment(id, { ...process.env, ...cmd.env });
 
 log(`spawn ${resolvedBin.command} ${childArgv.join(" ")} (pty=${cmd.usePty} resume=${isResume})`);
 
@@ -166,7 +168,7 @@ function handlePtyOutput(chunk) {
 // stuck at status "running". Fail cleanly instead.
 const ARG_ENV_LIMIT = 900 * 1024;
 const argvBytes = [resolvedBin.command, ...childArgv].reduce((n, a) => n + Buffer.byteLength(String(a), "utf8") + 1, 0);
-const envBytes = Object.entries({ ...process.env, ...cmd.env }).reduce(
+const envBytes = Object.entries(childEnv).reduce(
   (n, [k, v]) => n + Buffer.byteLength(k, "utf8") + Buffer.byteLength(String(v ?? ""), "utf8") + 2,
   0
 );
@@ -184,10 +186,9 @@ try {
       cols: 200,
       rows: 50,
       cwd: st.worktree?.path || st.cwd || process.cwd(),
-      env: { ...process.env, ...cmd.env },
+      env: childEnv,
     });
     child.onData((d) => {
-      try { process.stdout.write(d); } catch {}
       try { logStream.write(d); } catch {}
       try { handlePtyOutput(d); } catch (e) {
         try { log(`pty output handler error: ${e.message}`); } catch {}
@@ -198,12 +199,11 @@ try {
     // pipe stdin so desktop/CLI can inject messages while the worker is running
     child = spawn(resolvedBin.command, childArgv, {
       cwd: st.worktree?.path || st.cwd || process.cwd(),
-      env: { ...process.env, ...cmd.env },
+      env: childEnv,
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
     child.stdout.on("data", (d) => {
-      try { process.stdout.write(d); } catch {}
       try { logStream.write(d); } catch {}
       const text = d.toString();
       combinedBuf = (combinedBuf + text).slice(-BUF_CAP);
@@ -212,7 +212,6 @@ try {
       }
     });
     child.stderr.on("data", (d) => {
-      try { process.stderr.write(d); } catch {}
       try { logStream.write(d); } catch {}
       const text = d.toString();
       combinedBuf = (combinedBuf + text).slice(-BUF_CAP);
