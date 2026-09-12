@@ -69,6 +69,10 @@ test("model-selection defaults expose the approved commander choices and worker 
     "utf8"
   ));
 
+  assert.deepEqual(pickWorkerRuntime(config, "devin"), {
+    model: "swe-2",
+    effort: null,
+  });
   assert.deepEqual(pickWorkerRuntime(config, "codex"), {
     model: "gpt-5.6-luna",
     effort: "max",
@@ -98,6 +102,7 @@ test("model-selection defaults expose the approved commander choices and worker 
 test("installer upgrades previous model defaults without replacing custom choices", () => {
   const legacy = {
     workers: {
+      devin: { defaultModel: "glm-5.2" },
       cursor: { defaultModel: "composer-2.5" },
       grok: { defaultModel: "grok-4.5" },
     },
@@ -105,14 +110,20 @@ test("installer upgrades previous model defaults without replacing custom choice
     permissionBridge: { patterns: { grok: [] } },
   };
   assert.equal(updateConfigDefaults(legacy), true);
+  assert.equal(legacy.workers.devin.defaultModel, "swe-2");
   assert.equal(legacy.workers.cursor.defaultModel, "cursor-grok-4.6-medium");
   assert.equal(legacy.workers.cursor.defaultEffort, "medium");
   assert.equal(legacy.workers.grok.defaultModel, "grok-4.6");
   assert.equal(legacy.workers.grok.defaultEffort, "medium");
   assert.equal(legacy.commander.defaultModel, "claude-fable-5-1[1m]");
 
+  const legacyVariant = { workers: { devin: { defaultModel: "glm-5-2" } } };
+  assert.equal(updateConfigDefaults(legacyVariant), true);
+  assert.equal(legacyVariant.workers.devin.defaultModel, "swe-2");
+
   const custom = {
     workers: {
+      devin: { defaultModel: "opus" },
       cursor: { defaultModel: "cursor-custom", defaultEffort: "high" },
       grok: { defaultModel: "grok-custom", defaultEffort: "high" },
     },
@@ -120,6 +131,7 @@ test("installer upgrades previous model defaults without replacing custom choice
     permissionBridge: { patterns: { grok: [] } },
   };
   assert.equal(updateConfigDefaults(custom), false);
+  assert.equal(custom.workers.devin.defaultModel, "opus");
   assert.equal(custom.workers.cursor.defaultModel, "cursor-custom");
   assert.equal(custom.workers.cursor.defaultEffort, "high");
   assert.equal(custom.workers.grok.defaultModel, "grok-custom");

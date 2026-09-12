@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 const NPM_COMMANDS = new Set(["npm", "npx"]);
+const DEVIN_DEFAULT_MODEL = "swe-2";
+const PREVIOUS_DEVIN_DEFAULT_MODELS = new Set(["glm-5.2", "glm-5-2"]);
 const CURSOR_DEFAULT_MODEL = "cursor-grok-4.6-medium";
 const CURSOR_DEFAULT_EFFORT = "medium";
 const PREVIOUS_CURSOR_DEFAULT_MODEL = "composer-2.5";
@@ -48,6 +50,22 @@ export function buildSkillsInstallArgs(source, agents) {
 export function updateConfigDefaults(config) {
   let changed = false;
   config.workers ||= {};
+  if (!config.workers.devin) {
+    config.workers.devin = {
+      cli: "devin",
+      defaultModel: DEVIN_DEFAULT_MODEL,
+      permissionMode: "dangerous",
+      printMode: true,
+      extraArgs: [],
+    };
+    changed = true;
+  } else if (
+    !config.workers.devin.defaultModel ||
+    PREVIOUS_DEVIN_DEFAULT_MODELS.has(config.workers.devin.defaultModel)
+  ) {
+    config.workers.devin.defaultModel = DEVIN_DEFAULT_MODEL;
+    changed = true;
+  }
   if (!config.workers.cursor) {
     config.workers.cursor = {
       cli: "cursor-agent",

@@ -5,7 +5,7 @@
   "workers": {
     "devin": {
       "cli": "devin",
-      "defaultModel": "glm-5.2",
+      "defaultModel": "swe-2",
       "permissionMode": "dangerous",
       "printMode": true,
       "extraArgs": []

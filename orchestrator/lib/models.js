@@ -202,8 +202,9 @@ const CLAUDE_MODELS = [
 ];
 
 const DEVIN_MODELS = [
-  { slug: "swe-1-7", label: "SWE 1.7", effort: "n/a" },
+  { slug: "swe-2", label: "SWE-2", effort: "n/a" },
   { slug: "glm-5.2", label: "GLM 5.2", effort: "n/a" },
+  { slug: "swe-1-7", label: "SWE 1.7", effort: "n/a" },
   { slug: "opus", label: "Opus (latest alias)", effort: "n/a" },
   { slug: "codex", label: "Codex (via Devin)", effort: "n/a" },
   { slug: "claude-opus-4.6", label: "Claude Opus 4.6 (via Devin)", effort: "n/a" },

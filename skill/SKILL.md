@@ -15,7 +15,7 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
 
 1. Confirm `orchestrator` is on PATH. If not, it lives at `~/.orchestrator/orchestrator.js`; run `node ~/.orchestrator/orchestrator.js`.
 2. Read config: `orchestrator config show`. Defaults:
-   - devin → model `glm-5.2` (no effort option)
+   - devin → model `swe-2` (no effort option); `glm-5.2` is the second option
    - codex → model `gpt-5.6-luna`, effort `max`
    - cursor → model `cursor-grok-4.6-medium`, effort `medium`
    - claude → model `claude-opus-5`, effort `high`
@@ -29,7 +29,7 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
 | Role | CLI | Default model | Effort |
 |---|---|---|---|
 | Commander | Invoking agent/session | Fable 5.1 1M / GPT-6 Astra | high / medium |
-| Worker: devin | `devin -p` | GLM 5.2 | not supported |
+| Worker: devin | `devin -p` | SWE-2 | not supported |
 | Worker: codex | `codex exec` | GPT-5.6 Luna | max |
 | Worker: cursor | `cursor-agent -p` | Cursor Grok 4.6 | medium |
 | Worker: claude | `claude -p` | Opus 5.0 | high |
@@ -43,7 +43,7 @@ Before dispatch, classify each implementation unit and use a suitable available 
 
 | Unit | Worker choices |
 |---|---|
-| Routine | Cursor Composer 2.5; Devin GLM 5.2; Grok CLI Grok 4.6 at `low`; Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
+| Routine | Cursor Composer 2.5; Devin SWE-2; Grok CLI Grok 4.6 at `low`; Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
 | Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Terra at `xhigh` |
 | Irreversible if wrong | Codex GPT-6 Astra at `xhigh`; Claude Fable 5.1 at `xhigh` |
 
@@ -60,7 +60,7 @@ Cursor workers may use only Grok, Composer, or Fable model families. Do not sele
 
 Use Claude Opus primarily as a reviewer, not as an implementation worker. It may implement only when Claude is the only usable worker provider.
 
-Cursor Grok 4.6 means Grok through `cursor-agent`; Grok CLI Grok 4.6 means the official `grok` CLI. They are separate providers with independent capacity and may run concurrently. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin and GLM 5.2 share a maximum of five concurrent implementation workers across projects; reviewer use is unlimited.
+Cursor Grok 4.6 means Grok through `cursor-agent`; Grok CLI Grok 4.6 means the official `grok` CLI. They are separate providers with independent capacity and may run concurrently. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin workers share a maximum of five concurrent implementation workers across projects; reviewer use is unlimited. Devin runs SWE-2 by default, with GLM 5.2 (`--model glm-5.2`) as the second option.
 
 Use either Claude Fable 5.1 1M at `xhigh` or GPT-6 Astra at `xhigh` for the Commander; Fable/high is the config default and Astra/medium is its alternative. The current process is the Commander and orchestrator cannot change its model after launch, so select one of these models when starting the invoking session when the host permits it. Do not apply worker tiers to the Commander.
 
@@ -312,7 +312,7 @@ The worker resumes on its existing CLI session in the same worktree, applies you
 Revise guidance:
 - Be specific and actionable: cite file paths, line numbers, and what to change. The worker has its prior context but not your reasoning — say exactly what's wrong and what the desired state is.
 - One concern per revise is fine; batch multiple concerns into one revise when related.
-- If the same findings recur or revisions stop making progress, switch providers with `orchestrator-handoff` instead of revising indefinitely. For routine work, switch Devin/GLM 5.2 to Cursor Grok 4.6 or Grok CLI Grok 4.6 at `medium`, and switch either Grok route to Devin/GLM 5.2. For difficult work, switch among either Grok 4.6 route at `xhigh` and Codex. Use Claude Opus for implementation only when Claude is the only usable worker provider. Only move to GPT-6 Astra or Fable 5.1 at `xhigh` when the unit meets the irreversible-tier definition. If the remaining work is mechanical implementation of an already-accepted design, stay on a lower tier. If the remaining work is performance-sensitive code, keep it on this tier. Include all prior review findings and diffs in the handoff brief, then restart the review cycle.
+- If the same findings recur or revisions stop making progress, switch providers with `orchestrator-handoff` instead of revising indefinitely. For routine work, switch Devin/SWE-2 to Cursor Grok 4.6 or Grok CLI Grok 4.6 at `medium`, and switch either Grok route to Devin/SWE-2. For difficult work, switch among either Grok 4.6 route at `xhigh` and Codex. Use Claude Opus for implementation only when Claude is the only usable worker provider. Only move to GPT-6 Astra or Fable 5.1 at `xhigh` when the unit meets the irreversible-tier definition. If the remaining work is mechanical implementation of an already-accepted design, stay on a lower tier. If the remaining work is performance-sensitive code, keep it on this tier. Include all prior review findings and diffs in the handoff brief, then restart the review cycle.
 - `--model` and `--interactive` can be overridden per revise.
 - If `orchestrator status <id>` shows no `sessionId`, resume is impossible (the CLI didn't emit a parseable session ID). Fall back to archive + re-spawn.
 
@@ -415,7 +415,7 @@ orchestrator archive --older-than 1d            # bulk-clean old finished worker
 ## Quick reference
 
 ```bash
-orchestrator spawn devin --model glm-5.2 -- "implement /api/orders endpoint in src/api/orders.ts"
+orchestrator spawn devin --model swe-2 -- "implement /api/orders endpoint in src/api/orders.ts"
 orchestrator spawn devin --model glm-5.2 -- "implement a routine isolated unit"
 orchestrator spawn codex --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
 orchestrator spawn codex --model gpt-6-astra --effort xhigh -- "implement an irreversible ABI or schema change"
