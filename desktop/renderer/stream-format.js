@@ -33,7 +33,10 @@ export function formatStreamLog(rawLog, opts = {}) {
     }`;
   }
 
-  const lines = String(rawLog).split("\n");
+  const normalizedLog = opts.workerType === "devin"
+    ? normalizeDevinTerminalLog(String(rawLog))
+    : String(rawLog);
+  const lines = normalizedLog.split("\n");
   /** @type {{ kind: string, html: string }[]} */
   const blocks = [];
   let omittedBlocks = 0;
@@ -173,6 +176,25 @@ export function formatStreamLog(rawLog, opts = {}) {
     // plain text line
     flushStreams();
     if (opts.workerType === "devin") {
+      const action = parseDevinAction(line);
+      if (action) {
+        pushBlock({
+          kind: "devin-action",
+          html: `<div class="sf-block sf-devin-action sf-devin-${esc(action.kind)}">
+            <span class="sf-devin-bullet">●</span>
+            <span class="sf-devin-kind">${esc(action.label)}</span>
+            <span class="sf-devin-detail">${esc(action.detail)}</span>
+          </div>`,
+        });
+        continue;
+      }
+      if (/^\s*[│└⋮]/u.test(line)) {
+        pushBlock({
+          kind: "devin-detail",
+          html: `<div class="sf-devin-output">${esc(line.trimEnd())}</div>`,
+        });
+        continue;
+      }
       const progress = formatDevinProgress(line);
       pushBlock({
         kind: "progress",
@@ -217,6 +239,39 @@ export function formatStreamLog(rawLog, opts = {}) {
     slice.map((b) => b.html).join("") +
     (live ? '<span class="term-cursor"></span>' : "")
   );
+}
+
+function normalizeDevinTerminalLog(raw) {
+  let text = raw
+    // OSC sequences (window title, hyperlinks, clipboard, etc.).
+    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
+    // CSI and short escape sequences used for cursor movement, color and erasing.
+    .replace(/\x1b(?:\[[0-?]*[ -/]*[@-~]|\([A-Z0-2]|[=>])/g, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+  // Resolve terminal backspace overstrikes without attempting full terminal emulation.
+  for (let i = 0; i < 8 && /[^\n]\x08/.test(text); i++) {
+    text = text.replace(/[^\n]\x08/g, "");
+  }
+  return text.replace(/\x08/g, "");
+}
+
+function parseDevinAction(line) {
+  const match = line.match(/^\s*[●•]\s*(Read|Edited|Edit|Wrote|Write|Created|Deleted|Searched|Ran)\b\s*(.*)$/iu);
+  if (!match) return null;
+  const labels = {
+    read: ["read", "Read"],
+    edited: ["edit", "Edited"],
+    edit: ["edit", "Edit"],
+    wrote: ["write", "Wrote"],
+    write: ["write", "Write"],
+    created: ["write", "Created"],
+    deleted: ["delete", "Deleted"],
+    searched: ["search", "Searched"],
+    ran: ["exec", "Ran"],
+  };
+  const [kind, label] = labels[match[1].toLowerCase()] || ["tool", match[1]];
+  return { kind, label, detail: match[2] || "" };
 }
 
 function formatDevinProgress(line) {

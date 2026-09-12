@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld("orchestrator", {
   listWorkers: () => ipcRenderer.invoke("workers:list"),
   getDetail: (id) => ipcRenderer.invoke("workers:detail", id),
   getLog: (id, opts) => ipcRenderer.invoke("workers:log", id, opts),
+  getChanges: (id) => ipcRenderer.invoke("workers:changes", id),
+  getFileDiff: (id, filePath) => ipcRenderer.invoke("workers:fileDiff", id, filePath),
   listProcesses: () => ipcRenderer.invoke("processes:list"),
   openPath: (p) => ipcRenderer.invoke("shell:openPath", p),
   showItem: (p) => ipcRenderer.invoke("shell:showItem", p),

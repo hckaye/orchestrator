@@ -5,12 +5,13 @@ const api = window.orchestrator;
 
 const MUX_PREFIX = "mux:";
 const DEFAULT_SUB = "terminal";
-const SUBTABS = ["terminal", "overview", "process", "chain", "json"];
+const SUBTABS = ["terminal", "changes", "overview", "process", "chain", "json"];
 const DAY_MS = 24 * 60 * 60 * 1000;
 const LOG_READ_BYTES = 192 * 1024;
 const LOG_MAX_LINES = 1600;
 const LOG_MAX_BLOCKS = 220;
 const LOG_POLL_MS = 1200;
+const CHANGES_POLL_MS = 3000;
 const MUX_PAGE_SIZE = 12;
 const MAX_CACHED_LOGS = 24;
 
@@ -33,10 +34,16 @@ const state = {
   logs: new Map(), // id -> { path, size, text, mtimeMs, truncated, error? }
   formattedLogs: new Map(), // id -> { key, html }
   logRequests: new Set(),
+  changes: new Map(), // id -> change listing
+  changeRequests: new Set(),
+  fileDiffs: new Map(), // `${id}\0${path}` -> file diff
+  diffRequests: new Set(),
+  selectedChange: new Map(), // id -> path
   subtab: new Map(),
   logFollow: new Map(),
   muxOffset: new Map(),
   logTimer: null,
+  changesTimer: null,
   archiveTimer: null,
   archiveBusy: false,
 };
@@ -223,6 +230,9 @@ function discardTabState(id) {
   state.details.delete(id);
   state.logs.delete(id);
   state.formattedLogs.delete(id);
+  state.changes.delete(id);
+  state.selectedChange.delete(id);
+  clearFileDiffs(id);
   state.subtab.delete(id);
   state.logFollow.delete(id);
   state.muxOffset.delete(id);
@@ -663,6 +673,13 @@ async function ensureLog(id) {
       const sub = state.subtab.get(id) || DEFAULT_SUB;
       if (sub === "terminal" || sub === "logs") {
         const term = $(".term-body", panel) || $(".log-box", panel);
+        if (term && !prev) {
+          // The initial loading view does not contain the source note, task bar,
+          // or other log-dependent chrome. Render it once in full when the first
+          // log snapshot arrives; subsequent polls can replace only the body.
+          renderPanel(panel, id);
+          return;
+        }
         if (term && prev && prev.text && log.text && log.text.startsWith(prev.text.slice(-2000).slice(0, 100))) {
           // full replace is simpler and reliable for tail windows
         }
@@ -679,6 +696,67 @@ async function ensureLog(id) {
     console.error(e);
   } finally {
     state.logRequests.delete(id);
+  }
+}
+
+function fileDiffKey(id, filePath) {
+  return `${id}\0${filePath}`;
+}
+
+function clearFileDiffs(id) {
+  const prefix = `${id}\0`;
+  for (const key of state.fileDiffs.keys()) {
+    if (key.startsWith(prefix)) state.fileDiffs.delete(key);
+  }
+}
+
+async function ensureChanges(id, { refreshDiff = false } = {}) {
+  if (isMuxTab(id) || state.changeRequests.has(id)) return;
+  state.changeRequests.add(id);
+  try {
+    const changes = await api.getChanges(id);
+    if (!changes) return;
+    state.changes.set(id, changes);
+
+    const files = changes.files || [];
+    let selected = state.selectedChange.get(id);
+    if (!files.some((file) => file.path === selected)) {
+      selected = files[0]?.path || null;
+      if (selected) state.selectedChange.set(id, selected);
+      else state.selectedChange.delete(id);
+    }
+    if (refreshDiff) clearFileDiffs(id);
+    softRefreshActiveIf(id);
+    if (selected && (refreshDiff || !state.fileDiffs.has(fileDiffKey(id, selected)))) {
+      await ensureFileDiff(id, selected);
+    }
+  } catch (e) {
+    console.error(e);
+    state.changes.set(id, { ok: false, error: e.message || String(e), files: [] });
+    softRefreshActiveIf(id);
+  } finally {
+    state.changeRequests.delete(id);
+  }
+}
+
+async function ensureFileDiff(id, filePath) {
+  const key = fileDiffKey(id, filePath);
+  if (state.diffRequests.has(key)) return;
+  state.diffRequests.add(key);
+  try {
+    const diff = await api.getFileDiff(id, filePath);
+    if (diff) state.fileDiffs.set(key, diff);
+  } catch (e) {
+    console.error(e);
+    state.fileDiffs.set(key, {
+      ok: false,
+      path: filePath,
+      error: e.message || String(e),
+      patch: "",
+    });
+  } finally {
+    state.diffRequests.delete(key);
+    softRefreshActiveIf(id);
   }
 }
 
@@ -875,6 +953,7 @@ function renderPanel(panel, id) {
 
   const s = summary || {};
   const isTerm = sub === "terminal";
+  const isChanges = sub === "changes";
   panel.innerHTML = `
     <div class="panel-header ${isTerm ? "panel-header-compact" : ""}">
       <div class="panel-title-row">
@@ -912,7 +991,7 @@ function renderPanel(panel, id) {
         ).join("")}
       </div>
     </div>
-    <div class="panel-body ${isTerm ? "term-panel-body" : ""}" data-body-for="${esc(id)}">
+    <div class="panel-body ${isTerm ? "term-panel-body" : ""} ${isChanges ? "changes-panel-body" : ""}" data-body-for="${esc(id)}">
       ${renderSubview(id, sub, detail, s, proc)}
     </div>
   `;
@@ -1023,6 +1102,7 @@ function bindPanelEvents(panel, id) {
     btn.addEventListener("click", () => {
       state.subtab.set(id, btn.dataset.subtab);
       if (btn.dataset.subtab === "terminal" || btn.dataset.subtab === "logs") ensureLog(id);
+      if (btn.dataset.subtab === "changes") ensureChanges(id, { refreshDiff: true });
       renderPanel(panel, id);
     });
   });
@@ -1030,7 +1110,14 @@ function bindPanelEvents(panel, id) {
     btn.addEventListener("click", async () => {
       const action = btn.dataset.action;
       if (action === "refresh") {
-        await Promise.all([ensureDetail(id), ensureLog(id)]);
+        const tasks = [ensureDetail(id), ensureLog(id)];
+        if ((state.subtab.get(id) || DEFAULT_SUB) === "changes") {
+          tasks.push(ensureChanges(id, { refreshDiff: true }));
+        }
+        await Promise.all(tasks);
+        renderPanel(panel, id);
+      } else if (action === "refresh-changes") {
+        await ensureChanges(id, { refreshDiff: true });
         renderPanel(panel, id);
       } else if (action === "open-wt" && btn.dataset.path) {
         await api.openPath(btn.dataset.path);
@@ -1042,6 +1129,14 @@ function bindPanelEvents(panel, id) {
   });
   $$("[data-open-id]", panel).forEach((btn) => {
     btn.addEventListener("click", () => selectWorker(btn.dataset.openId));
+  });
+  $$("[data-change-path]", panel).forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const filePath = btn.dataset.changePath;
+      state.selectedChange.set(id, filePath);
+      renderPanel(panel, id);
+      ensureFileDiff(id, filePath);
+    });
   });
   const follow = $("[data-log-follow]", panel);
   if (follow) {
@@ -1262,6 +1357,7 @@ function bindTermSend(panel, id) {
 function labelSub(name) {
   return {
     terminal: "Terminal",
+    changes: "Changes",
     overview: "Overview",
     process: "Process",
     chain: "Chain",
@@ -1273,6 +1369,8 @@ function renderSubview(id, sub, detail, s, proc) {
   switch (sub) {
     case "terminal":
       return renderTerminal(id, s);
+    case "changes":
+      return renderChangesView(id);
     case "process":
       return renderProcessView(id, s, proc);
     case "chain":
@@ -1343,12 +1441,121 @@ function renderTerminal(id, s) {
             : ""
       }
       <div class="term-body">${bodyHtml}</div>
+      ${
+        s?.type === "devin" && !s?.interactive
+          ? `<div class="term-source-note">
+               このDevinセッションは非対話の <code>--print</code> モードです。このモードではRead/Editなどのツールイベントが標準出力されません。
+               ファイルの変化は <button type="button" class="linkish" data-subtab="changes" data-id="${esc(id)}">Changes</button> で確認できます。
+             </div>`
+          : ""
+      }
       <div class="term-task-bar" title="${esc(s?.task || "")}">
         <span class="term-dim">task</span> ${esc((s?.taskPreview || s?.task || "").slice(0, 160))}
       </div>
       ${termFooterHtml(id, s, active, canSend)}
     </div>
   `;
+}
+
+function changeStatusLabel(file) {
+  if (file.status === "?") return "U";
+  return file.status || "M";
+}
+
+function changeStatusTitle(file) {
+  return {
+    M: "modified",
+    A: "added",
+    D: "deleted",
+    R: "renamed",
+    C: "copied",
+    T: "type changed",
+    U: "unmerged",
+    "?": "untracked",
+  }[file.status] || file.status || "modified";
+}
+
+function renderDiffHtml(patch) {
+  if (!patch) return `<span class="diff-empty">(textual diff is empty)</span>`;
+  return String(patch)
+    .split("\n")
+    .map((line) => {
+      let cls = "context";
+      if (line.startsWith("+") && !line.startsWith("+++")) cls = "added";
+      else if (line.startsWith("-") && !line.startsWith("---")) cls = "removed";
+      else if (line.startsWith("@@")) cls = "hunk";
+      else if (/^(diff --git|index |--- |\+\+\+ |new file|deleted file|similarity|rename (from|to)|Binary file)/.test(line)) cls = "meta";
+      return `<span class="diff-line ${cls}">${esc(line) || " "}</span>`;
+    })
+    .join("");
+}
+
+function renderChangesView(id) {
+  const changes = state.changes.get(id);
+  if (!changes) {
+    return `<div class="changes-state"><span class="term-spinner" aria-hidden="true"></span> Loading changes…</div>`;
+  }
+  if (!changes.ok) {
+    return `<div class="changes-state error">変更を取得できませんでした。<br><code>${esc(changes.error || "unknown error")}</code></div>`;
+  }
+
+  const files = changes.files || [];
+  if (!files.length) {
+    return `
+      <div class="changes-empty">
+        <div>変更されたファイルはありません。</div>
+        <button type="button" class="btn ghost" data-action="refresh-changes">Refresh</button>
+        ${changes.warnings?.length ? `<div class="changes-warning">${changes.warnings.map(esc).join("<br>")}</div>` : ""}
+      </div>`;
+  }
+
+  const selected = state.selectedChange.get(id) || files[0].path;
+  const diff = state.fileDiffs.get(fileDiffKey(id, selected));
+  const selectedFile = files.find((file) => file.path === selected) || files[0];
+  const sourceLabel = changes.source === "completed-commit"
+    ? `commit ${(changes.target || "").slice(0, 10)}`
+    : changes.source === "branch"
+      ? "branch snapshot"
+      : "current worktree";
+
+  return `
+    <div class="changes-layout">
+      <aside class="changes-files">
+        <div class="changes-summary">
+          <div><strong>${files.length}</strong> files</div>
+          <button type="button" class="btn ghost" data-action="refresh-changes">Refresh</button>
+        </div>
+        <div class="changes-stat">${esc(changes.shortStat || sourceLabel)}</div>
+        <div class="changes-file-list">
+          ${files.map((file) => `
+            <button type="button" class="change-file ${file.path === selected ? "selected" : ""}" data-change-path="${esc(file.path)}" title="${esc(changeStatusTitle(file))}: ${esc(file.path)}">
+              <span class="change-status status-${esc(file.status || "M")}">${esc(changeStatusLabel(file))}</span>
+              <span class="change-path">
+                ${file.oldPath ? `<span class="change-old-path">${esc(file.oldPath)} →</span>` : ""}
+                ${esc(file.path)}
+              </span>
+              ${file.staged ? '<span class="change-work-state" title="staged">S</span>' : ""}
+              ${file.unstaged ? '<span class="change-work-state" title="unstaged">W</span>' : ""}
+            </button>`).join("")}
+        </div>
+        <div class="changes-source" title="${esc(changes.root || "")}">${esc(sourceLabel)}</div>
+      </aside>
+      <section class="changes-diff">
+        <div class="changes-diff-head">
+          <span class="change-status status-${esc(selectedFile.status || "M")}">${esc(changeStatusLabel(selectedFile))}</span>
+          <span class="changes-diff-path">${esc(selectedFile.path)}</span>
+          ${diff?.truncated ? '<span class="changes-truncated">truncated</span>' : ""}
+        </div>
+        ${changes.warnings?.length ? `<div class="changes-warning">${changes.warnings.map(esc).join("<br>")}</div>` : ""}
+        <pre class="diff-box">${
+          !diff
+            ? '<span class="diff-empty">Loading diff…</span>'
+            : diff.ok
+              ? renderDiffHtml(diff.patch)
+              : `<span class="diff-error">${esc(diff.error || "diff failed")}</span>`
+        }</pre>
+      </section>
+    </div>`;
 }
 
 function termFooterHtml(id, s, active, canSend) {
@@ -1637,6 +1844,18 @@ function startLogPolling() {
   }, LOG_POLL_MS);
 }
 
+function startChangesPolling() {
+  if (state.changesTimer) clearInterval(state.changesTimer);
+  state.changesTimer = setInterval(() => {
+    if (document.hidden || !state.activeTab || isMuxTab(state.activeTab)) return;
+    const sub = state.subtab.get(state.activeTab) || DEFAULT_SUB;
+    const summary = state.summaries.find((worker) => worker.id === state.activeTab);
+    if (sub === "changes" && (summary?.active || isLive(state.activeTab))) {
+      ensureChanges(state.activeTab, { refreshDiff: true });
+    }
+  }, CHANGES_POLL_MS);
+}
+
 // —— data wiring ——
 function applyWorkersPayload(payload) {
   if (!payload) return;
@@ -1661,10 +1880,14 @@ function applyWorkersPayload(payload) {
 
 function pruneRemovedWorkerCaches() {
   const existing = new Set(state.summaries.map((s) => s.id));
-  for (const cache of [state.details, state.logs, state.formattedLogs, state.subtab, state.logFollow]) {
+  for (const cache of [state.details, state.logs, state.formattedLogs, state.changes, state.selectedChange, state.subtab, state.logFollow]) {
     for (const id of cache.keys()) {
       if (!isMuxTab(id) && !existing.has(id)) cache.delete(id);
     }
+  }
+  for (const key of state.fileDiffs.keys()) {
+    const workerId = key.slice(0, key.indexOf("\0"));
+    if (!existing.has(workerId)) state.fileDiffs.delete(key);
   }
 }
 
@@ -1803,6 +2026,7 @@ async function init() {
   bindControls();
   startArchiveClock();
   startLogPolling();
+  startChangesPolling();
 
   api.onWorkersUpdate(applyWorkersPayload);
   api.onLogsChanged(applyLogsChanged);

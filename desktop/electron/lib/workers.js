@@ -13,6 +13,7 @@ import {
   workerHeartbeat,
   workerExit,
 } from "./paths.js";
+import { collectWorkerChanges, readWorkerFileDiff } from "./changes.js";
 
 function readdirSafe(dir) {
   try {
@@ -337,6 +338,14 @@ export function getDetail(id) {
     chain: [...chain, summary, ...forward],
     siblings,
   };
+}
+
+export function getChanges(id) {
+  return collectWorkerChanges(readState(id));
+}
+
+export function getFileDiff(id, filePath) {
+  return readWorkerFileDiff(readState(id), filePath);
 }
 
 export function readLogTail(id, {

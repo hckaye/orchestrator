@@ -107,6 +107,17 @@ function setupIpc() {
     return workers.readLogTail(id, opts || {});
   });
 
+  ipcMain.handle("workers:changes", (_e, id) => {
+    if (!id || typeof id !== "string") return { ok: false, error: "bad id" };
+    return workers.getChanges(id);
+  });
+
+  ipcMain.handle("workers:fileDiff", (_e, id, filePath) => {
+    if (!id || typeof id !== "string") return { ok: false, error: "bad id" };
+    if (!filePath || typeof filePath !== "string") return { ok: false, error: "bad file path" };
+    return workers.getFileDiff(id, filePath);
+  });
+
   ipcMain.handle("processes:list", async () => {
     lastProcessSnapshot = await listOrchestratorProcesses();
     return lastProcessSnapshot;

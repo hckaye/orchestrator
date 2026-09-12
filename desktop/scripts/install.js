@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Build and install the desktop app on the current OS.
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -15,8 +15,27 @@ const npx = platform === "win32" ? "npx.cmd" : "npx";
 
 function run(command, args) {
   console.log(`$ ${command} ${args.join(" ")}`);
-  const result = spawnSync(command, args, { cwd: root, stdio: "inherit", env: process.env });
+  const isCommandScript = platform === "win32" && /\.(?:cmd|bat)$/i.test(command);
+  const executable = isCommandScript ? (process.env.ComSpec || "cmd.exe") : command;
+  const executableArgs = isCommandScript
+    ? ["/d", "/s", "/c", command, ...args]
+    : args;
+  const result = spawnSync(executable, executableArgs, {
+    cwd: root,
+    stdio: "inherit",
+    env: process.env,
+  });
   if (result.error || result.status !== 0) throw result.error || new Error(`${command} exited with ${result.status}`);
+}
+
+function launch(command, args) {
+  const child = spawn(command, args, {
+    cwd: path.dirname(command),
+    detached: true,
+    stdio: "ignore",
+    env: process.env,
+  });
+  child.unref();
 }
 
 function exists(file) {
@@ -65,7 +84,7 @@ function installWindows() {
   const quote = (value) => `'${value.replaceAll("'", "''")}'`;
   const ps = `$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut(${quote(startMenu)}); $s.TargetPath = ${quote(exe)}; $s.WorkingDirectory = ${quote(destination)}; $s.Save()`;
   run("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps]);
-  run(exe, []);
+  launch(exe, []);
   console.log(`Installed: ${destination}`);
 }
 
