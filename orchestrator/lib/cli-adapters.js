@@ -3,12 +3,70 @@
 // printMode=true  -> non-interactive (-p), auto-approve via flags (no hang risk)
 // printMode=false -> interactive PTY, permission bridge active
 
+import fs from "node:fs";
+import path from "node:path";
+import { execSync } from "node:child_process";
+
 import {
   applyCursorModelEffort,
   applyDevinModelEffort,
   cursorModelSlugs,
   devinModelSlugs,
 } from "./models.js";
+
+// On Windows, worker CLIs installed via npm are extensionless shims plus a
+// .cmd wrapper, and neither spawn() nor node-pty can execute a .cmd directly.
+// where.exe resolves the name on PATH, but if the hit is a .cmd/.bat shim we
+// still cannot spawn it — so read the shim and peel out the real target:
+// an .exe invoked as "%~dp0\...\x.exe" %* (opencode), or a node entry point
+// invoked as node "%~dp0\...\x.js" %*. Returns { command, prefix } where
+// prefix args go before the built argv.
+export function resolveCliBin(bin, { platform = process.platform } = {}) {
+  const passthrough = { command: bin, prefix: [] };
+  if (platform !== "win32") return passthrough;
+  if (/\.(exe|com|cmd|bat)$/i.test(bin) || bin.includes("\\") || bin.includes("/")) {
+    return passthrough;
+  }
+  let candidates;
+  try {
+    candidates = execSync(`where.exe ${bin}`, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+  } catch {
+    return passthrough;
+  }
+  const exe = candidates.find((l) => /\.(exe|com)$/i.test(l));
+  if (exe) return { command: exe, prefix: [] };
+  const shim = candidates.find((l) => /\.(cmd|bat)$/i.test(l));
+  if (!shim) return passthrough;
+  let shimText;
+  try {
+    shimText = fs.readFileSync(shim, "utf8");
+  } catch {
+    return passthrough;
+  }
+  const shimDir = path.dirname(shim);
+  const dp0Target = (m) => path.join(shimDir, m[1].replace(/^[\\/]+/, ""));
+  // npm shims expand the shim dir as %~dp0 or via SET dp0=%~dp0 → "%dp0%\...".
+  // Prefer a .js entry: node-based shims also quote a "%dp0%\node.exe" loader,
+  // and "node x.js" is exactly what the shim runs.
+  const jsDp0 = shimText.match(/"%~?dp0%?([^"]+\.(?:js|mjs|cjs))"/i);
+  if (jsDp0) {
+    const target = dp0Target(jsDp0);
+    if (fs.existsSync(target)) return { command: process.execPath, prefix: [target] };
+  }
+  const jsAbs = shimText.match(/"([A-Za-z]:[^"]+\.(?:js|mjs|cjs))"/i);
+  if (jsAbs && fs.existsSync(jsAbs[1])) return { command: process.execPath, prefix: [jsAbs[1]] };
+  const exeDp0 = shimText.match(/"%~?dp0%?([^"]+\.exe)"/i);
+  if (exeDp0) {
+    const target = dp0Target(exeDp0);
+    if (fs.existsSync(target)) return { command: target, prefix: [] };
+  }
+  const exeAbs = shimText.match(/"([A-Za-z]:[^"]+\.exe)"/i);
+  if (exeAbs && fs.existsSync(exeAbs[1])) return { command: exeAbs[1], prefix: [] };
+  return passthrough;
+}
 
 // When an effort is explicitly resolved for this run, drop any effort flags
 // baked into config extraArgs — otherwise the CLI's last-flag-wins parsing

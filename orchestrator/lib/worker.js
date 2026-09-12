@@ -7,7 +7,7 @@ import path from "node:path";
 import { spawn, execSync } from "node:child_process";
 import os from "node:os";
 import * as state from "./state.js";
-import { buildCommand, buildResumeCommand, extractSessionId } from "./cli-adapters.js";
+import { buildCommand, buildResumeCommand, extractSessionId, resolveCliBin } from "./cli-adapters.js";
 import { detectFailureReason } from "./resume.js";
 
 const id = process.argv[2];
@@ -50,7 +50,10 @@ const cmd = isResume
       interactive: st.interactive,
     });
 
-log(`spawn ${cmd.cliBin} ${cmd.argv.join(" ")} (pty=${cmd.usePty} resume=${isResume})`);
+const resolvedBin = resolveCliBin(cmd.cliBin);
+const childArgv = [...resolvedBin.prefix, ...cmd.argv];
+
+log(`spawn ${resolvedBin.command} ${childArgv.join(" ")} (pty=${cmd.usePty} resume=${isResume})`);
 
 let child = null;
 let finished = false;
@@ -162,7 +165,7 @@ function handlePtyOutput(chunk) {
 // crash the supervisor with an uncaught `spawn E2BIG`, leaving the worker
 // stuck at status "running". Fail cleanly instead.
 const ARG_ENV_LIMIT = 900 * 1024;
-const argvBytes = [cmd.cliBin, ...cmd.argv].reduce((n, a) => n + Buffer.byteLength(String(a), "utf8") + 1, 0);
+const argvBytes = [resolvedBin.command, ...childArgv].reduce((n, a) => n + Buffer.byteLength(String(a), "utf8") + 1, 0);
 const envBytes = Object.entries({ ...process.env, ...cmd.env }).reduce(
   (n, [k, v]) => n + Buffer.byteLength(k, "utf8") + Buffer.byteLength(String(v ?? ""), "utf8") + 2,
   0
@@ -176,7 +179,7 @@ if (argvBytes + envBytes > ARG_ENV_LIMIT) {
 try {
   if (cmd.usePty) {
     const pty = await import("node-pty");
-    child = pty.spawn(cmd.cliBin, cmd.argv, {
+    child = pty.spawn(resolvedBin.command, childArgv, {
       name: "xterm-256color",
       cols: 200,
       rows: 50,
@@ -193,7 +196,7 @@ try {
     child.onExit(({ exitCode, signal }) => finish(exitCode, signal));
   } else {
     // pipe stdin so desktop/CLI can inject messages while the worker is running
-    child = spawn(cmd.cliBin, cmd.argv, {
+    child = spawn(resolvedBin.command, childArgv, {
       cwd: st.worktree?.path || st.cwd || process.cwd(),
       env: { ...process.env, ...cmd.env },
       windowsHide: true,
@@ -224,10 +227,10 @@ try {
       try { log(`spawn error: ${e.message}`); } catch {}
       finish(1, null, e.message);
     });
-    // `codex exec` treats a piped stdin as additional prompt input and waits for EOF before
-    // starting the turn. Non-interactive workers already receive their full prompt in argv;
-    // interactive workers use the PTY branch above when live input is required.
-    if (st.type === "codex") {
+    // `codex exec` and `opencode run` treat a piped stdin as additional prompt input and wait for
+    // EOF before starting the turn. Non-interactive workers already receive their full prompt in
+    // argv; interactive workers use the PTY branch above when live input is required.
+    if (st.type === "codex" || st.type === "opencode" || st.type === "opencode-go" || st.type === "zen") {
       try { child.stdin.end(); } catch {}
     }
   }
