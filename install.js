@@ -95,7 +95,7 @@ function findCommand(cli) {
 }
 
 function verify() {
-  const cliNames = ["devin", "claude", "codex", "cursor-agent", "grok"];
+  const cliNames = ["devin", "claude", "codex", "cursor-agent", "grok", "opencode"];
   for (const cli of cliNames) {
     console.log(`  worker CLI ${cli}: ${findCommand(cli) || "NOT FOUND"}`);
   }

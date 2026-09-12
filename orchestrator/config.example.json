@@ -6,6 +6,7 @@
     "devin": {
       "cli": "devin",
       "defaultModel": "swe-2",
+      "defaultEffort": "max",
       "permissionMode": "dangerous",
       "printMode": true,
       "extraArgs": []
@@ -42,6 +43,29 @@
       "defaultEffort": "medium",
       "permissionMode": "default",
       "alwaysApprove": true,
+      "printMode": true,
+      "extraArgs": []
+    },
+    "opencode": {
+      "cli": "opencode",
+      "defaultModel": "deepseek/deepseek-v4.1-flash",
+      "auto": true,
+      "printMode": true,
+      "extraArgs": []
+    },
+    "opencode-go": {
+      "cli": "opencode",
+      "provider": "opencode-go",
+      "defaultModel": "deepseek-v4.1-flash",
+      "auto": true,
+      "printMode": true,
+      "extraArgs": []
+    },
+    "zen": {
+      "cli": "opencode",
+      "provider": "opencode",
+      "defaultModel": "deepseek-v4.1-flash",
+      "auto": true,
       "printMode": true,
       "extraArgs": []
     }
@@ -100,6 +124,18 @@
       ],
       "grok": [
         { "regex": "Allow|approve|permission|Do you want to", "type": "permission" },
+        { "regex": "\\?\\s*$", "type": "question" }
+      ],
+      "opencode": [
+        { "regex": "Allow|approve|permission|permit|proceed", "type": "permission" },
+        { "regex": "\\?\\s*$", "type": "question" }
+      ],
+      "opencode-go": [
+        { "regex": "Allow|approve|permission|permit|proceed", "type": "permission" },
+        { "regex": "\\?\\s*$", "type": "question" }
+      ],
+      "zen": [
+        { "regex": "Allow|approve|permission|permit|proceed", "type": "permission" },
         { "regex": "\\?\\s*$", "type": "question" }
       ]
     }

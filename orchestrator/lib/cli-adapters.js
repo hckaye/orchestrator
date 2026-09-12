@@ -3,7 +3,12 @@
 // printMode=true  -> non-interactive (-p), auto-approve via flags (no hang risk)
 // printMode=false -> interactive PTY, permission bridge active
 
-import { applyCursorModelEffort, cursorModelSlugs } from "./models.js";
+import {
+  applyCursorModelEffort,
+  applyDevinModelEffort,
+  cursorModelSlugs,
+  devinModelSlugs,
+} from "./models.js";
 
 // When an effort is explicitly resolved for this run, drop any effort flags
 // baked into config extraArgs — otherwise the CLI's last-flag-wins parsing
@@ -12,7 +17,7 @@ function extraArgsWithoutEffort(extra) {
   const out = [];
   for (let i = 0; i < (extra?.length || 0); i++) {
     const a = String(extra[i]);
-    if (a === "--effort") { i++; continue; }
+    if (a === "--effort" || a === "--variant") { i++; continue; }
     if ((a === "-c" || a === "--config") && /^model_reasoning_effort\s*=/.test(String(extra[i + 1] ?? ""))) { i++; continue; }
     out.push(extra[i]);
   }
@@ -45,6 +50,10 @@ export function buildCommand(type, opts) {
       return cursor(cfg, model, effort, prompt, cwd, interactive);
     case "grok":
       return grok(cfg, model, effort, prompt, cwd, interactive);
+    case "opencode":
+    case "opencode-go":
+    case "zen":
+      return opencode(cfg, model, effort, prompt, cwd, interactive);
     default:
       throw new Error(`Unknown worker type: ${type}`);
   }
@@ -57,7 +66,12 @@ function devin(cfg, model, effort, prompt, cwd, interactive) {
   } else {
     argv.push("--", prompt);
   }
-  argv.push("--model", model);
+  // Devin encodes effort in the model slug (swe-2-max); resolve against the
+  // installed CLI's model list so families without variants stay unchanged.
+  const effectiveModel = effort
+    ? applyDevinModelEffort(model, effort, devinModelSlugs(cfg.cli))
+    : model;
+  argv.push("--model", effectiveModel);
   argv.push("--permission-mode", interactive ? "auto" : cfg.permissionMode || "dangerous");
   if (cfg.extraArgs?.length) argv.push(...cfg.extraArgs);
   return { argv, env: {}, usePty: interactive, cliBin: cfg.cli };
@@ -132,7 +146,29 @@ function grok(cfg, model, effort, prompt, cwd, interactive) {
   return { argv, env: {}, usePty: interactive, cliBin: cfg.cli };
 }
 
-export const WORKER_TYPES = ["devin", "codex", "cursor", "claude", "grok"];
+// opencode / opencode-go / zen all drive the `opencode` binary. cfg.provider
+// pins a hosted provider (opencode-go = OpenCode Go, opencode = Zen); bare
+// model ids get that prefix, already-qualified provider/model ids pass through.
+function opencodeModel(cfg, model) {
+  return cfg.provider && !model.includes("/") ? `${cfg.provider}/${model}` : model;
+}
+
+function opencode(cfg, model, effort, prompt, cwd, interactive) {
+  const argv = ["run"];
+  argv.push("-m", opencodeModel(cfg, model));
+  if (effort) argv.push("--variant", effort);
+  if (interactive) {
+    argv.push("--interactive");
+  } else {
+    if (cfg.printMode) argv.push("--format", "json");
+    if (cfg.auto !== false) argv.push("--auto");
+  }
+  pushExtraArgs(argv, cfg, effort);
+  argv.push(prompt);
+  return { argv, env: {}, usePty: interactive, cliBin: cfg.cli };
+}
+
+export const WORKER_TYPES = ["devin", "codex", "cursor", "claude", "grok", "opencode", "opencode-go", "zen"];
 
 // --- Resume support: re-spawn a worker on its existing session with feedback ---
 
@@ -151,6 +187,9 @@ export function buildResumeCommand(type, opts) {
     case "codex":   return resumeCodex(cfg, model, effort, opts.sessionId, prompt, cwd, interactive);
     case "cursor":  return resumeCursor(cfg, model, effort, opts.sessionId, prompt, cwd, interactive);
     case "grok":    return resumeGrok(cfg, model, effort, opts.sessionId, prompt, cwd, interactive);
+    case "opencode":
+    case "opencode-go":
+    case "zen":     return resumeOpencode(cfg, model, effort, opts.sessionId, prompt, cwd, interactive);
     default: throw new Error(`Unknown worker type: ${type}`);
   }
 }
@@ -162,7 +201,10 @@ function resumeDevin(cfg, model, effort, sessionId, prompt, cwd, interactive) {
   } else {
     argv.push("--", prompt);
   }
-  argv.push("--model", model);
+  const effectiveModel = effort
+    ? applyDevinModelEffort(model, effort, devinModelSlugs(cfg.cli))
+    : model;
+  argv.push("--model", effectiveModel);
   argv.push("--permission-mode", interactive ? "auto" : cfg.permissionMode || "dangerous");
   if (cfg.extraArgs?.length) argv.push(...cfg.extraArgs);
   return { argv, env: {}, usePty: interactive, cliBin: cfg.cli };
@@ -237,6 +279,21 @@ function resumeGrok(cfg, model, effort, sessionId, prompt, cwd, interactive) {
   return { argv, env: {}, usePty: interactive, cliBin: cfg.cli };
 }
 
+function resumeOpencode(cfg, model, effort, sessionId, prompt, cwd, interactive) {
+  const argv = ["run", "--session", sessionId];
+  argv.push("-m", opencodeModel(cfg, model));
+  if (effort) argv.push("--variant", effort);
+  if (interactive) {
+    argv.push("--interactive");
+  } else {
+    if (cfg.printMode) argv.push("--format", "json");
+    if (cfg.auto !== false) argv.push("--auto");
+  }
+  pushExtraArgs(argv, cfg, effort);
+  argv.push(prompt);
+  return { argv, env: {}, usePty: interactive, cliBin: cfg.cli };
+}
+
 const SESSION_ID_JSON = /"(?:session_id|sessionId)"\s*:\s*"([^"]+)"/i;
 
 function matchSessionIdJson(text) {
@@ -280,6 +337,13 @@ export function extractSessionId(type, text) {
     }
     case "grok":
       return matchSessionIdJson(text);
+    case "opencode":
+    case "opencode-go":
+    case "zen": {
+      const m = text.match(/"sessionID"\s*:\s*"(ses_[^"]+)"/i);
+      if (m) return m[1];
+      return matchSessionIdJson(text);
+    }
     default:
       return null;
   }

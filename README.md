@@ -9,7 +9,7 @@ Multi-CLI worker orchestration.
 
 The invoking agent or session acts as **commander**: it classifies each implementation unit by risk, dispatches it to a suitable worker CLI in its own git worktree, **pipelines** completions (reviews each worker as soon as it finishes while others still run instead of barrier-waiting for the whole cohort), sends feedback via `revise`, and merges into one integration branch. The default selection policy is described below.
 
-This tool spawns each worker CLI directly (`devin -p`, `claude -p`, `codex exec`, `cursor-agent -p`, `grok -p`). It does not use a daemon, so there is no daemon hang.
+This tool spawns each worker CLI directly (`devin -p`, `claude -p`, `codex exec`, `cursor-agent -p`, `grok -p`, `opencode run`). It does not use a daemon, so there is no daemon hang.
 
 ## Install
 
@@ -34,7 +34,7 @@ If you only need the skills, install them directly:
 npx skills add hckaye/orchestrator --skill orchestrator --skill orchestrator-handoff --global --copy --full-depth --yes
 ```
 
-Requires Node.js (developed on v25) and the worker CLIs you want to use (`devin`, `claude`, `codex`, `cursor-agent`, `grok`) installed and authenticated.
+Requires Node.js (developed on v25) and the worker CLIs you want to use (`devin`, `claude`, `codex`, `cursor-agent`, `grok`, `opencode`) installed and authenticated. The `opencode-go` and `zen` worker types also use the `opencode` binary.
 
 ## Config
 
@@ -42,11 +42,14 @@ Defaults in `~/.orchestrator/config.json`:
 
 | worker  | CLI            | default model       | effort                | permission          |
 |---------|----------------|---------------------|-----------------------|---------------------|
-| devin   | `devin`        | `swe-2`             | unsupported           | `dangerous` (auto)  |
+| devin   | `devin`        | `swe-2`             | `max`                 | `dangerous` (auto)  |
 | codex   | `codex`        | `gpt-5.6-luna`      | `max`                 | bypass approvals    |
 | cursor  | `cursor-agent` | `cursor-grok-4.6-medium` | `medium`          | `--yolo`            |
 | claude  | `claude`       | `claude-opus-5`     | `high`                | `bypassPermissions` |
 | grok    | `grok`         | `grok-4.6`          | `medium`              | `always-approve`    |
+| opencode | `opencode`    | `deepseek/deepseek-v4.1-flash` | —          | `--auto`            |
+| opencode-go | `opencode` | `deepseek-v4.1-flash` (→ `opencode-go/…`) | — | `--auto`            |
+| zen     | `opencode`     | `deepseek-v4.1-flash` (→ `opencode/…`) | —  | `--auto`            |
 
 Commander default model: `claude-fable-5-1[1m]` at high effort. `gpt-6-astra` at medium is the alternative Commander choice. Integration branch template: `integrate/${task}`, base: `main`.
 
@@ -58,7 +61,7 @@ Classify each unit before dispatching it. These are selection defaults, not a re
 
 | Unit | Default worker choices |
 |---|---|
-| Routine | Cursor Grok 4.6 at `medium`; Grok CLI Grok 4.6 at `medium`; Devin SWE-2; Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
+| Routine | Cursor Grok 4.6 at `medium`; Grok CLI Grok 4.6 at `medium`; Devin SWE-2 at `max`; OpenCode DeepSeek V4.1 Flash (`opencode` / `opencode-go` / `zen`); Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
 | Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Terra at `xhigh` |
 | Irreversible if wrong | Codex GPT-6 Astra at `xhigh`; Claude Fable 5.1 at `xhigh` |
 
@@ -75,7 +78,7 @@ Cursor workers may use only Grok, Composer, or Fable model families. Do not sele
 
 Use Claude Opus primarily as a reviewer, not as an implementation worker. It may implement only when Claude is the only usable worker provider.
 
-Cursor Grok 4.6 and Grok CLI Grok 4.6 are separate providers with independent parallel capacity, so both may be dispatched in the same tier. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin workers share a limit of five concurrent implementation workers across projects; reviewer use is not part of that limit. Devin runs SWE-2 by default, with GLM 5.2 as the second option.
+Cursor Grok 4.6 and Grok CLI Grok 4.6 are separate providers with independent parallel capacity, so both may be dispatched in the same tier. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin workers share a limit of about seven concurrent implementation workers across the entire orchestrator, including workers belonging to other projects on the same machine; reviewer use is not part of that limit. Devin runs SWE-2 at `max` effort by default, with GLM 5.2 as the second option. OpenCode contributes three worker types over the single `opencode` binary: `opencode` takes a full `provider/model` id, while `opencode-go` and `zen` pin the OpenCode Go (`opencode-go/…`) and OpenCode Zen (`opencode/…`) providers and take a bare model id. All three default to DeepSeek V4.1 Flash (routine tier) with GLM-5.3-Flash as the second option.
 
 Use either Claude Fable 5.1 1M at `high` or GPT-6 Astra at `medium` for the Commander; Fable/high is the config default and Astra/medium is its alternative. The `commander` config entry is advisory because orchestrator does not launch or replace the invoking session, so select one of these models when starting the session when the host supports it. The three tiers above apply to dispatched workers, not to the Commander.
 
@@ -91,11 +94,12 @@ Do not append `-xhigh` (or another effort name) to the model passed to `orchestr
 
 | Worker | Underlying form |
 |---|---|
-| Devin | `--model <m>`; effort is unsupported |
+| Devin | `--model <resolved-model-id>`; effort resolves to a listed `<base>-<level>` variant (e.g. `swe-2-max`), unchanged when no variant exists |
 | Codex | `--model <m> -c 'model_reasoning_effort="<level>"'`; Codex CLI has no `--effort` flag |
 | Cursor | resolves the model ID to a listed `<base>-<level>` or `[effort=<level>]` variant when available |
 | Claude | `--model <m> --effort <level>` |
 | Grok | `--model <m> --effort <level>` (`--effort` aliases `--reasoning-effort`) |
+| OpenCode | `opencode run -m <provider>/<model> [--variant <level>]`; `opencode-go`/`zen` prepend their provider to a bare model id |
 
 For example, the correct Codex command is:
 
@@ -122,6 +126,9 @@ orchestrator spawn cursor --model cursor-grok-4.6-medium --effort xhigh -- "impl
 orchestrator spawn claude --model claude-opus-5 --effort high -- "review a difficult architecture change; report findings only, do not edit files"
 orchestrator spawn grok   --model grok-4.6 --effort medium -- "review the integration tests and fix failures"
 orchestrator spawn grok   --model grok-4.6 --effort xhigh -- "implement a difficult architecture change"
+orchestrator spawn opencode    --model deepseek/deepseek-v4.1-flash -- "fix a routine lint failure"
+orchestrator spawn opencode-go --model deepseek-v4.1-flash -- "implement a routine isolated unit"
+orchestrator spawn zen    --model glm-5.3-flash -- "implement a routine isolated unit"
 
 orchestrator ls
 orchestrator wait <id> --timeout 120      # short wait in reconcile loop (prefer over barrier)

@@ -19,7 +19,8 @@ import {
   resolveNpmInvocation,
   updateConfigDefaults,
 } from "../install-utils.js";
-import { applyCursorModelEffort, pickWorkerRuntime } from "../orchestrator/lib/models.js";
+import { applyCursorModelEffort, applyDevinModelEffort, pickWorkerRuntime } from "../orchestrator/lib/models.js";
+import { buildCommand, buildResumeCommand, extractSessionId } from "../orchestrator/lib/cli-adapters.js";
 import { moduleDirectory } from "../orchestrator/lib/paths.js";
 import { buildOrchestratorInvocation } from "../desktop/electron/lib/orchestrator-process.js";
 
@@ -71,7 +72,7 @@ test("model-selection defaults expose the approved commander choices and worker 
 
   assert.deepEqual(pickWorkerRuntime(config, "devin"), {
     model: "swe-2",
-    effort: null,
+    effort: "max",
   });
   assert.deepEqual(pickWorkerRuntime(config, "codex"), {
     model: "gpt-5.6-luna",
@@ -88,6 +89,18 @@ test("model-selection defaults expose the approved commander choices and worker 
   assert.deepEqual(pickWorkerRuntime(config, "grok"), {
     model: "grok-4.6",
     effort: "medium",
+  });
+  assert.deepEqual(pickWorkerRuntime(config, "opencode"), {
+    model: "deepseek/deepseek-v4.1-flash",
+    effort: null,
+  });
+  assert.deepEqual(pickWorkerRuntime(config, "opencode-go"), {
+    model: "deepseek-v4.1-flash",
+    effort: null,
+  });
+  assert.deepEqual(pickWorkerRuntime(config, "zen"), {
+    model: "deepseek-v4.1-flash",
+    effort: null,
   });
   assert.deepEqual(config.commander, {
     defaultModel: "claude-fable-5-1[1m]",
@@ -111,10 +124,17 @@ test("installer upgrades previous model defaults without replacing custom choice
   };
   assert.equal(updateConfigDefaults(legacy), true);
   assert.equal(legacy.workers.devin.defaultModel, "swe-2");
+  assert.equal(legacy.workers.devin.defaultEffort, "max");
   assert.equal(legacy.workers.cursor.defaultModel, "cursor-grok-4.6-medium");
   assert.equal(legacy.workers.cursor.defaultEffort, "medium");
   assert.equal(legacy.workers.grok.defaultModel, "grok-4.6");
   assert.equal(legacy.workers.grok.defaultEffort, "medium");
+  assert.equal(legacy.workers.opencode.defaultModel, "deepseek/deepseek-v4.1-flash");
+  assert.equal(legacy.workers["opencode-go"].provider, "opencode-go");
+  assert.equal(legacy.workers["opencode-go"].defaultModel, "deepseek-v4.1-flash");
+  assert.equal(legacy.workers.zen.provider, "opencode");
+  assert.equal(legacy.workers.zen.defaultModel, "deepseek-v4.1-flash");
+  assert.ok(legacy.permissionBridge.patterns["opencode-go"].length > 0);
   assert.equal(legacy.commander.defaultModel, "claude-fable-5-1[1m]");
 
   const legacyVariant = { workers: { devin: { defaultModel: "glm-5-2" } } };
@@ -123,20 +143,93 @@ test("installer upgrades previous model defaults without replacing custom choice
 
   const custom = {
     workers: {
-      devin: { defaultModel: "opus" },
+      devin: { defaultModel: "opus", defaultEffort: "high" },
       cursor: { defaultModel: "cursor-custom", defaultEffort: "high" },
       grok: { defaultModel: "grok-custom", defaultEffort: "high" },
+      opencode: { defaultModel: "custom/custom-model" },
+      "opencode-go": { defaultModel: "custom-go-model" },
+      zen: { defaultModel: "custom-zen-model" },
     },
     commander: { defaultModel: "gpt-5.6-sol" },
-    permissionBridge: { patterns: { grok: [] } },
+    permissionBridge: {
+      patterns: { grok: [], opencode: [], "opencode-go": [], zen: [] },
+    },
   };
   assert.equal(updateConfigDefaults(custom), false);
   assert.equal(custom.workers.devin.defaultModel, "opus");
+  assert.equal(custom.workers.devin.defaultEffort, "high");
   assert.equal(custom.workers.cursor.defaultModel, "cursor-custom");
   assert.equal(custom.workers.cursor.defaultEffort, "high");
   assert.equal(custom.workers.grok.defaultModel, "grok-custom");
   assert.equal(custom.workers.grok.defaultEffort, "high");
+  assert.equal(custom.workers.opencode.defaultModel, "custom/custom-model");
+  assert.equal(custom.workers["opencode-go"].defaultModel, "custom-go-model");
+  assert.equal(custom.workers.zen.defaultModel, "custom-zen-model");
   assert.equal(custom.commander.defaultModel, "gpt-5.6-sol");
+});
+
+test("Devin effort resolves to the listed <base>-<level> model variant", () => {
+  const slugs = [
+    "swe-2-high",
+    "swe-2-medium",
+    "swe-2-max",
+    "swe-1-7",
+    "swe-1-7-medium",
+    "glm-5-2",
+    "glm-5-2-max",
+    "glm-5-2-1m",
+    "glm-5-2-max-1m",
+    "adaptive",
+  ];
+  assert.equal(applyDevinModelEffort("swe-2", "max", slugs), "swe-2-max");
+  assert.equal(applyDevinModelEffort("swe-2", "medium", slugs), "swe-2-medium");
+  assert.equal(applyDevinModelEffort("swe-2-max", "high", slugs), "swe-2-high");
+  // dotted spelling resolves to the canonical listed slug
+  assert.equal(applyDevinModelEffort("glm-5.2", "max", slugs), "glm-5-2-max");
+  // context-size suffix stays last in the listed variant
+  assert.equal(applyDevinModelEffort("glm-5-2-1m", "max", slugs), "glm-5-2-max-1m");
+  // swe-1-7 has no -max variant; the bare slug is already the max tier
+  assert.equal(applyDevinModelEffort("swe-1-7", "max", slugs), "swe-1-7");
+  assert.equal(applyDevinModelEffort("adaptive", "max", slugs), "adaptive");
+  // without an authoritative list, only tiered slugs are rewritten
+  assert.equal(applyDevinModelEffort("swe-2", "max", null), "swe-2");
+  assert.equal(applyDevinModelEffort("swe-2-max", "high", null), "swe-2-high");
+});
+
+test("opencode workers prefix bare models with the pinned provider and map effort to --variant", () => {
+  const cfg = {
+    workers: {
+      opencode: { cli: "opencode", defaultModel: "deepseek/deepseek-v4.1-flash", auto: true, printMode: true, extraArgs: [] },
+      "opencode-go": { cli: "opencode", provider: "opencode-go", defaultModel: "deepseek-v4.1-flash", auto: true, printMode: true, extraArgs: [] },
+      zen: { cli: "opencode", provider: "opencode", defaultModel: "deepseek-v4.1-flash", auto: true, printMode: true, extraArgs: [] },
+    },
+  };
+  const go = buildCommand("opencode-go", { cfg, model: "deepseek-v4.1-flash", prompt: "do x", cwd: "c" });
+  assert.deepEqual(go.argv, [
+    "run", "-m", "opencode-go/deepseek-v4.1-flash", "--format", "json", "--auto", "do x",
+  ]);
+  const zen = buildCommand("zen", { cfg, model: "glm-5.3-flash", effort: "high", prompt: "do x", cwd: "c" });
+  assert.deepEqual(zen.argv, [
+    "run", "-m", "opencode/glm-5.3-flash", "--variant", "high", "--format", "json", "--auto", "do x",
+  ]);
+  const oc = buildCommand("opencode", { cfg, model: "deepseek/deepseek-v4.1-flash", prompt: "do x", cwd: "c" });
+  assert.ok(oc.argv.includes("deepseek/deepseek-v4.1-flash"));
+  const bypass = buildCommand("zen", { cfg, model: "openai/gpt-5.5", prompt: "do x", cwd: "c" });
+  assert.ok(bypass.argv.includes("openai/gpt-5.5"));
+  const resumed = buildResumeCommand("opencode-go", {
+    cfg, model: "deepseek-v4.1-flash", sessionId: "ses_abc", prompt: "go", cwd: "c",
+  });
+  assert.deepEqual(resumed.argv, [
+    "run", "--session", "ses_abc", "-m", "opencode-go/deepseek-v4.1-flash",
+    "--format", "json", "--auto", "go",
+  ]);
+  const interactive = buildCommand("zen", { cfg, model: "glm-5.3-flash", prompt: "do x", cwd: "c", interactive: true });
+  assert.ok(interactive.argv.includes("--interactive"));
+  assert.ok(!interactive.argv.includes("--auto"));
+  assert.equal(
+    extractSessionId("opencode", '{"type":"step_start","sessionID":"ses_f6caba079ffeUFv0Zllk3sgYsa"}'),
+    "ses_f6caba079ffeUFv0Zllk3sgYsa",
+  );
 });
 
 test("Grok 4.6 defaults select the requested tier and explicit older models remain allowed", () => {

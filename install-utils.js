@@ -3,6 +3,7 @@ import path from "node:path";
 
 const NPM_COMMANDS = new Set(["npm", "npx"]);
 const DEVIN_DEFAULT_MODEL = "swe-2";
+const DEVIN_DEFAULT_EFFORT = "max";
 const PREVIOUS_DEVIN_DEFAULT_MODELS = new Set(["glm-5.2", "glm-5-2"]);
 const CURSOR_DEFAULT_MODEL = "cursor-grok-4.6-medium";
 const CURSOR_DEFAULT_EFFORT = "medium";
@@ -10,6 +11,9 @@ const PREVIOUS_CURSOR_DEFAULT_MODEL = "composer-2.5";
 const GROK_DEFAULT_MODEL = "grok-4.6";
 const GROK_DEFAULT_EFFORT = "medium";
 const PREVIOUS_GROK_DEFAULT_MODEL = "grok-4.5";
+const OPENCODE_DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash";
+const OPENCODE_GO_DEFAULT_MODEL = "deepseek-v4.1-flash";
+const ZEN_DEFAULT_MODEL = "deepseek-v4.1-flash";
 const COMMANDER_DEFAULT_MODEL = "claude-fable-5-1[1m]";
 const PREVIOUS_COMMANDER_DEFAULT_MODEL = "claude-fable-5[1m]";
 
@@ -19,6 +23,7 @@ const WORKER_AGENT_TARGETS = [
   { command: "codex", agent: "codex" },
   { command: "cursor-agent", agent: "cursor" },
   { command: "grok", agent: "grok" },
+  { command: "opencode", agent: "opencode" },
 ];
 
 export function detectInstalledSkillAgents(commandExists) {
@@ -54,6 +59,7 @@ export function updateConfigDefaults(config) {
     config.workers.devin = {
       cli: "devin",
       defaultModel: DEVIN_DEFAULT_MODEL,
+      defaultEffort: DEVIN_DEFAULT_EFFORT,
       permissionMode: "dangerous",
       printMode: true,
       extraArgs: [],
@@ -64,6 +70,10 @@ export function updateConfigDefaults(config) {
     PREVIOUS_DEVIN_DEFAULT_MODELS.has(config.workers.devin.defaultModel)
   ) {
     config.workers.devin.defaultModel = DEVIN_DEFAULT_MODEL;
+    changed = true;
+  }
+  if (!config.workers.devin.defaultEffort) {
+    config.workers.devin.defaultEffort = DEVIN_DEFAULT_EFFORT;
     changed = true;
   }
   if (!config.workers.cursor) {
@@ -107,6 +117,38 @@ export function updateConfigDefaults(config) {
     config.workers.grok.defaultEffort = GROK_DEFAULT_EFFORT;
     changed = true;
   }
+  if (!config.workers.opencode) {
+    config.workers.opencode = {
+      cli: "opencode",
+      defaultModel: OPENCODE_DEFAULT_MODEL,
+      auto: true,
+      printMode: true,
+      extraArgs: [],
+    };
+    changed = true;
+  }
+  if (!config.workers["opencode-go"]) {
+    config.workers["opencode-go"] = {
+      cli: "opencode",
+      provider: "opencode-go",
+      defaultModel: OPENCODE_GO_DEFAULT_MODEL,
+      auto: true,
+      printMode: true,
+      extraArgs: [],
+    };
+    changed = true;
+  }
+  if (!config.workers.zen) {
+    config.workers.zen = {
+      cli: "opencode",
+      provider: "opencode",
+      defaultModel: ZEN_DEFAULT_MODEL,
+      auto: true,
+      printMode: true,
+      extraArgs: [],
+    };
+    changed = true;
+  }
   if (config.commander?.defaultModel === PREVIOUS_COMMANDER_DEFAULT_MODEL) {
     config.commander.defaultModel = COMMANDER_DEFAULT_MODEL;
     changed = true;
@@ -120,6 +162,15 @@ export function updateConfigDefaults(config) {
       { regex: "\\?\\s*$", type: "question" },
     ];
     changed = true;
+  }
+  for (const type of ["opencode", "opencode-go", "zen"]) {
+    if (!config.permissionBridge.patterns[type]) {
+      config.permissionBridge.patterns[type] = [
+        { regex: "Allow|approve|permission|permit|proceed", type: "permission" },
+        { regex: "\\?\\s*$", type: "question" },
+      ];
+      changed = true;
+    }
   }
   return changed;
 }

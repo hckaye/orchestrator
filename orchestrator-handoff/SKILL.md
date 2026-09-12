@@ -26,7 +26,7 @@ Transfer in-progress implementation to a **different** worker CLI when `resume` 
 
 ## Parsing arguments
 
-1. **Target worker type** — `devin`, `codex`, `cursor`, `claude`, or `grok`. Explicit user request first; otherwise pick the best fit for the remaining work.
+1. **Target worker type** — `devin`, `codex`, `cursor`, `claude`, `grok`, `opencode`, `opencode-go`, or `zen`. Explicit user request first; otherwise pick the best fit for the remaining work.
 2. **Source worker** — `--from <id>` or the worker the user is referring to.
 3. **Optional notes** — anything after `--` becomes commander notes in the briefing.
 

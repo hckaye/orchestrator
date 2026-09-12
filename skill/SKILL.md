@@ -7,7 +7,7 @@ description: Commander-driven multi-CLI worker orchestration. The invoking agent
 
 You are the **commander**. You do not implement; you decompose the task, dispatch implementation to worker CLIs in isolated worktrees, **always arm `wait` after every spawn** (dispatch-only is a failure), **pipeline** completions (review each worker as soon as it finishes while others still run), and merge everything into one integration branch.
 
-A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrator` CLI on PATH) does the plumbing. It spawns each worker CLI directly (`devin -p`, `claude -p`, `codex exec`, `cursor-agent -p`, `grok -p`) — no daemon, no hang.
+A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrator` CLI on PATH) does the plumbing. It spawns each worker CLI directly (`devin -p`, `claude -p`, `codex exec`, `cursor-agent -p`, `grok -p`, `opencode run`) — no daemon, no hang.
 
 **User's additional context:** $ARGUMENTS
 
@@ -15,25 +15,31 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
 
 1. Confirm `orchestrator` is on PATH. If not, it lives at `~/.orchestrator/orchestrator.js`; run `node ~/.orchestrator/orchestrator.js`.
 2. Read config: `orchestrator config show`. Defaults:
-   - devin → model `swe-2` (no effort option); `glm-5.2` is the second option
+   - devin → model `swe-2`, effort `max` (spawned as `swe-2-max`); `glm-5.2` is the second option
    - codex → model `gpt-5.6-luna`, effort `max`
    - cursor → model `cursor-grok-4.6-medium`, effort `medium`
    - claude → model `claude-opus-5`, effort `high`
    - grok → model `grok-4.6`, effort `medium`
+   - opencode → model `deepseek/deepseek-v4.1-flash` (any configured provider); `zhipuai/glm-5.3-flash` is the second option
+   - opencode-go → `opencode` CLI pinned to OpenCode Go, model `deepseek-v4.1-flash` (bare id; becomes `opencode-go/deepseek-v4.1-flash`); `glm-5.3-flash` is the second option
+   - zen → `opencode` CLI pinned to OpenCode Zen, model `deepseek-v4.1-flash` (becomes `opencode/deepseek-v4.1-flash`); `glm-5.3-flash` is the second option
    - commander (the invoking agent/session) → model `claude-fable-5-1[1m]`, effort `high`; alternatively `gpt-6-astra`, effort `medium`
    - integration branch template: `integrate/${task}`, base: `main`
-3. All worker CLIs (`devin`, `claude`, `codex`, `cursor-agent`, `grok`) must be installed and authenticated. Verify with `which devin claude codex cursor-agent grok`.
+3. All worker CLIs (`devin`, `claude`, `codex`, `cursor-agent`, `grok`, `opencode`) must be installed and authenticated. Verify with `which devin claude codex cursor-agent grok opencode`. `opencode-go` and `zen` workers also use the `opencode` binary.
 
 ## Roles
 
 | Role | CLI | Default model | Effort |
 |---|---|---|---|
 | Commander | Invoking agent/session | Fable 5.1 1M / GPT-6 Astra | high / medium |
-| Worker: devin | `devin -p` | SWE-2 | not supported |
+| Worker: devin | `devin -p` | SWE-2 | max |
 | Worker: codex | `codex exec` | GPT-5.6 Luna | max |
 | Worker: cursor | `cursor-agent -p` | Cursor Grok 4.6 | medium |
 | Worker: claude | `claude -p` | Opus 5.0 | high |
 | Worker: grok | `grok -p` | Grok 4.6 | medium |
+| Worker: opencode | `opencode run` | DeepSeek V4.1 Flash | - |
+| Worker: opencode-go | `opencode run` (Go provider) | DeepSeek V4.1 Flash | - |
+| Worker: zen | `opencode run` (Zen provider) | DeepSeek V4.1 Flash | - |
 
 Override a worker's model with `--model` and its effort with `--effort` at spawn.
 
@@ -43,7 +49,7 @@ Before dispatch, classify each implementation unit and use a suitable available 
 
 | Unit | Worker choices |
 |---|---|
-| Routine | Cursor Composer 2.5; Devin SWE-2; Grok CLI Grok 4.6 at `low`; Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
+| Routine | Cursor Composer 2.5; Devin SWE-2 at `max`; Grok CLI Grok 4.6 at `low`; OpenCode DeepSeek V4.1 Flash (`opencode` / `opencode-go` / `zen`); Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
 | Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Terra at `xhigh` |
 | Irreversible if wrong | Codex GPT-6 Astra at `xhigh`; Claude Fable 5.1 at `xhigh` |
 
@@ -60,7 +66,9 @@ Cursor workers may use only Grok, Composer, or Fable model families. Do not sele
 
 Use Claude Opus primarily as a reviewer, not as an implementation worker. It may implement only when Claude is the only usable worker provider.
 
-Cursor Grok 4.6 means Grok through `cursor-agent`; Grok CLI Grok 4.6 means the official `grok` CLI. They are separate providers with independent capacity and may run concurrently. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin workers share a maximum of five concurrent implementation workers across projects; reviewer use is unlimited. Devin runs SWE-2 by default, with GLM 5.2 (`--model glm-5.2`) as the second option.
+Cursor Grok 4.6 means Grok through `cursor-agent`; Grok CLI Grok 4.6 means the official `grok` CLI. They are separate providers with independent capacity and may run concurrently. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin workers share a maximum of about seven concurrent implementation workers across the entire orchestrator — that count includes Devin workers spawned for other projects on this machine; reviewer use is unlimited. Devin runs SWE-2 at `max` effort by default, with GLM 5.2 (`--model glm-5.2`) as the second option.
+
+OpenCode is three worker types over one binary: `opencode` takes a full `provider/model` id, while `opencode-go` and `zen` pin the OpenCode Go (`opencode-go/`) and OpenCode Zen (`opencode/`) providers and take a bare model id. They share the `opencode` CLI's own parallelism; treat them as one provider for capacity purposes. All three default to DeepSeek V4.1 Flash (routine tier), with GLM-5.3-Flash as the second option.
 
 Use either Claude Fable 5.1 1M at `xhigh` or GPT-6 Astra at `xhigh` for the Commander; Fable/high is the config default and Astra/medium is its alternative. The current process is the Commander and orchestrator cannot change its model after launch, so select one of these models when starting the invoking session when the host permits it. Do not apply worker tiers to the Commander.
 
@@ -78,11 +86,12 @@ The actual translation is different for each CLI:
 
 | Worker | Underlying model/effort form | Important detail |
 |---|---|---|
-| Devin | `devin ... --model <m>` | Devin has no effort flag; effort is unsupported. |
+| Devin | `devin ... --model <resolved-id>` | Devin has no effort flag; the adapter resolves `--effort max` to a listed model variant such as `swe-2-max`. Models without a listed effort variant (e.g. `swe-1-6`, `adaptive`) remain unchanged. |
 | Codex | `codex exec --model <m> -c 'model_reasoning_effort="<level>"' ...` | Codex CLI does not accept `--effort`; use the orchestrator option and let it produce `-c`. |
 | Cursor | `cursor-agent ... --model <resolved-id>` | The adapter resolves `--effort xhigh` to a listed model such as `<base>-xhigh`, or to `[effort=xhigh]` for a parameterized model. `composer-2.5` remains unchanged because it has no effort variants. |
 | Claude | `claude ... --model <m> --effort <level>` | Effort is a separate CLI flag. |
 | Grok | `grok ... --model <m> --effort <level>` | `--effort` is an alias of `--reasoning-effort`. |
+| OpenCode | `opencode run -m <provider>/<model> [--variant <level>]` | `--effort` maps to opencode's `--variant` (provider-specific reasoning effort). `opencode-go` / `zen` prepend their provider to a bare model id; a full `provider/model` id bypasses the pin. |
 
 For example, this is the correct Codex invocation through orchestrator:
 
@@ -117,6 +126,19 @@ The CLI prints a worker **ID**. Add it to the roster immediately (unit → id �
 3. Writes state to `~/.orchestrator/workers/<id>.json` and logs to `~/.orchestrator/logs/<id>.log`.
 
 Dispatch independent workers in parallel (multiple `orchestrator spawn` calls in one tool block).
+
+### Task briefs: prefer a file over a long argument
+
+On Windows, a long `-- "<task brief>"` or one containing newlines can be truncated or mangled by shell/argument parsing before it reaches the worker. On Windows, make the file-based flow below the default; on other platforms use it whenever the brief is more than a few lines. The same applies to feedback after `--` on `revise`, `resume`, and `handoff-spawn`.
+
+1. Write the brief to a repo-local ignored path (e.g. `tmp/orchestrator/<unit>.md`).
+2. Spawn with a short reference to its **absolute path**:
+
+```bash
+orchestrator spawn devin -- "Read and implement the task in D:/repo/tmp/orchestrator/orders-api.md"
+```
+
+Workers run in a separate git worktree, so a file under the main working tree is only reachable by absolute path. Keep the file until the worker is merged/archived — `revise`/`resume` can point the worker back at it.
 
 ### Spawn is not done — monitoring is mandatory
 
@@ -379,10 +401,9 @@ This pushes the integration branch and opens a PR to base via `gh`. Report the P
 ```bash
 orchestrator archive <id>                   # remove worktree + state (keep logs) — default path
 orchestrator archive --older-than 1d --dry-run  # preview leftovers only
-orchestrator archive --older-than 1d            # bulk-clean old finished workers you missed
 ```
 
-`--older-than` is a safety net for stragglers, **not** a substitute for per-worker archive right after merge or abandon. Leaving merged worktrees until a bulk clean is a policy violation.
+`archive` always targets your own rostered ids. `--older-than` sweeps finished workers from **all** repositories on this machine, not just this project — do not run it unless the user explicitly asks for a machine-wide cleanup; use per-id `archive` instead.
 
 ### Anti-patterns
 
@@ -411,6 +432,7 @@ orchestrator archive --older-than 1d            # bulk-clean old finished worker
 - **Prefer the newest version of the same named model.** Compare versions numerically and select the newest available version by default. Never cross the model-name boundary to do so; Opus may replace an older Opus, but Luna, Sol, and Astra must not replace each other, and neither may Fable and Opus.
 - **Restrict Cursor models.** Cursor workers may use only Grok, Composer, or Fable model families, even if Cursor lists other models.
 - **Use Claude Opus for review.** Do not dispatch it for implementation unless Claude is the only usable worker provider.
+- **Only operate on your project's workers.** `orchestrator ls` (and `resumable` / `pending`) lists workers from every repository on this machine. Before `kill` / `archive` / `resume` / `revise` / `respond` / `merge`, confirm `orchestrator status <id>` → `repo` matches the current repo root. Never touch another project's worker, and do not run machine-wide `archive --older-than` — archive your own workers per id.
 
 ## Quick reference
 
@@ -427,6 +449,9 @@ orchestrator spawn cursor --model cursor-grok-4.6-medium --effort xhigh -- "impl
 orchestrator spawn claude --model claude-opus-5 --effort high -- "review a difficult architecture change; report findings only, do not edit files"
 orchestrator spawn grok --model grok-4.6 --effort medium -- "review the integration tests and fix failures"
 orchestrator spawn grok --model grok-4.6 --effort xhigh -- "implement a difficult architecture change"
+orchestrator spawn opencode --model deepseek/deepseek-v4.1-flash -- "fix a routine lint failure"
+orchestrator spawn opencode-go --model deepseek-v4.1-flash -- "implement a routine isolated unit"
+orchestrator spawn zen --model glm-5.3-flash -- "implement a routine isolated unit"
 
 orchestrator ls                              # reconcile roster often
 orchestrator wait <id> --timeout 120         # short timeout in reconcile loop (Pattern B)

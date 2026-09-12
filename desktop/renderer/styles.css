@@ -458,6 +458,9 @@ body {
 .type-cursor { background: #c792ea; }
 .type-claude { background: #d4a574; }
 .type-grok { background: #3ecf8e; }
+.type-opencode { background: #ff9e64; }
+.type-opencode-go { background: #bb9af7; }
+.type-zen { background: #7dcfff; }
 .type-unknown { background: #6b7385; }
 
 /* —— Process list —— */

@@ -95,6 +95,67 @@ export function applyCursorModelEffort(model, effort, knownSlugs = null) {
   return hadTier ? candidates[0] : model;
 }
 
+// Cache of `devin models list` slugs, fetched at most once per process.
+let devinSlugCache;
+export function devinModelSlugs(cli = "devin") {
+  if (devinSlugCache !== undefined) return devinSlugCache;
+  try {
+    const out = execFileSync(cli, ["models", "list"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 15000,
+    });
+    const slugs = parseDevinModelsList(out);
+    devinSlugCache = slugs.length ? slugs : null;
+  } catch {
+    devinSlugCache = null;
+  }
+  return devinSlugCache;
+}
+
+// eslint-disable-next-line no-control-regex
+const ANSI_RE = /\x1b\[[0-9;]*m/g;
+
+// `devin models list` prints family headers at column 0 and indented rows of
+// "<slug>  <label>". Aliases lines ("aliases: swe") and wrapped label
+// continuations are filtered out by the slug shape check.
+function parseDevinModelsList(text) {
+  const slugs = [];
+  for (const line of String(text).replace(ANSI_RE, "").split("\n")) {
+    const m = line.match(/^\s+(\S+?)\s{2,}\S/);
+    if (!m) continue;
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(m[1])) continue;
+    slugs.push(m[1]);
+  }
+  return slugs;
+}
+
+// Devin has no effort flag; effort is a model-slug suffix (swe-2-max).
+// Rewrite to the listed <base>-<level> variant when one exists; leave the
+// model unchanged otherwise (e.g. adaptive, swe-1-6 have no such variants).
+export function applyDevinModelEffort(model, effort, knownSlugs = null) {
+  if (!effort || !model) return model;
+  const e = normalizeEffort(effort);
+  const base = stripEffortSuffix(model);
+  const candidates = [`${base}-${e}`];
+  // context-size suffixes stay last in the listed slug (glm-5-2-max-1m)
+  const ctx = base.match(/^(.*?)-(1m)$/i);
+  if (ctx) candidates.push(`${ctx[1]}-${e}-${ctx[2]}`);
+  if (Array.isArray(knownSlugs) && knownSlugs.length) {
+    // users may write dotted spellings (glm-5.2) where the listed slug uses
+    // dashes (glm-5-2); normalize before comparing and return the canonical
+    // listed slug
+    const norm = (s) => s.toLowerCase().replace(/\./g, "-");
+    for (const c of candidates) {
+      const hit = knownSlugs.find((s) => norm(s) === norm(c));
+      if (hit) return hit;
+    }
+    return model;
+  }
+  // no authoritative list: rewrite only slugs already carrying a tier
+  return extractEffortFromSlug(model) ? candidates[0] : model;
+}
+
 export function pickWorkerRuntime(cfg, type, { model, effort } = {}) {
   const workerCfg = cfg.workers?.[type] || {};
   const resolvedEffort = resolveEffort(type, cfg, effort);
@@ -202,13 +263,13 @@ const CLAUDE_MODELS = [
 ];
 
 const DEVIN_MODELS = [
-  { slug: "swe-2", label: "SWE-2", effort: "n/a" },
-  { slug: "glm-5.2", label: "GLM 5.2", effort: "n/a" },
-  { slug: "swe-1-7", label: "SWE 1.7", effort: "n/a" },
-  { slug: "opus", label: "Opus (latest alias)", effort: "n/a" },
-  { slug: "codex", label: "Codex (via Devin)", effort: "n/a" },
-  { slug: "claude-opus-4.6", label: "Claude Opus 4.6 (via Devin)", effort: "n/a" },
-  { slug: "claude-sonnet-4", label: "Claude Sonnet 4 (via Devin)", effort: "n/a" },
+  { slug: "swe-2", label: "SWE-2", effort: "via model suffix" },
+  { slug: "glm-5.2", label: "GLM 5.2", effort: "via model suffix" },
+  { slug: "swe-1-7", label: "SWE 1.7", effort: "via model suffix" },
+  { slug: "opus", label: "Opus (latest alias)", effort: "via model suffix" },
+  { slug: "codex", label: "Codex (via Devin)", effort: "via model suffix" },
+  { slug: "claude-opus-4.6", label: "Claude Opus 4.6 (via Devin)", effort: "via model suffix" },
+  { slug: "claude-sonnet-4", label: "Claude Sonnet 4 (via Devin)", effort: "via model suffix" },
 ];
 
 const CODEX_MODELS = [
@@ -216,6 +277,31 @@ const CODEX_MODELS = [
   { slug: "gpt-5.6-terra", label: "GPT-5.6 Terra", effort: "via --effort" },
   { slug: "gpt-5.6-sol", label: "GPT-5.6 Sol", effort: "via --effort" },
   { slug: "gpt-6-astra", label: "GPT-6 Astra", effort: "via --effort" },
+];
+
+// opencode workers take a full provider/model id — the provider is whatever
+// the user's opencode install has configured (deepseek, zhipuai, openai, ...).
+const OPENCODE_MODELS = [
+  { slug: "deepseek/deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash", effort: "via --variant" },
+  { slug: "zhipuai/glm-5.3-flash", label: "GLM-5.3 Flash", effort: "via --variant" },
+  { slug: "opencode/big-pickle", label: "Big Pickle (Zen free)", effort: "via --variant" },
+];
+
+// opencode-go / zen workers pin a provider; slugs here are the bare model ids
+// the adapter prefixes with opencode-go/ or opencode/.
+const OPENCODE_GO_MODELS = [
+  { slug: "deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash", effort: "via --variant" },
+  { slug: "glm-5.3-flash", label: "GLM-5.3 Flash", effort: "via --variant" },
+  { slug: "deepseek-v4-pro", label: "DeepSeek V4 Pro", effort: "via --variant" },
+  { slug: "kimi-k3", label: "Kimi K3", effort: "via --variant" },
+];
+
+const ZEN_MODELS = [
+  { slug: "deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash", effort: "via --variant" },
+  { slug: "glm-5.3-flash", label: "GLM-5.3 Flash", effort: "via --variant" },
+  { slug: "deepseek-v4-flash", label: "DeepSeek V4 Flash", effort: "via --variant" },
+  { slug: "deepseek-v4-pro", label: "DeepSeek V4 Pro", effort: "via --variant" },
+  { slug: "kimi-k3", label: "Kimi K3", effort: "via --variant" },
 ];
 
 export function listModels(cfg, typeFilter) {
@@ -272,6 +358,14 @@ export function listModels(cfg, typeFilter) {
         current: cfg.workers?.devin?.defaultModel === m.slug ? "yes" : "no",
       });
     }
+    rows.push({
+      type: "devin",
+      slug: "(flag)",
+      label: `--effort ${EFFORT_LEVELS.join("|")} → <base>-<level> model variant`,
+      effort: "per spawn",
+      fast: "-",
+      current: cfg.workers?.devin?.defaultEffort ? `default=${cfg.workers.devin.defaultEffort}` : "-",
+    });
   }
 
   if (!typeFilter || typeFilter === "codex") {
@@ -292,6 +386,33 @@ export function listModels(cfg, typeFilter) {
       effort: "per spawn",
       fast: "-",
       current: cfg.workers?.codex?.defaultEffort ? `default=${cfg.workers.codex.defaultEffort}` : "-",
+    });
+  }
+
+  const OPENCODE_LISTS = {
+    opencode: OPENCODE_MODELS,
+    "opencode-go": OPENCODE_GO_MODELS,
+    zen: ZEN_MODELS,
+  };
+  for (const type of Object.keys(OPENCODE_LISTS)) {
+    if (typeFilter && typeFilter !== type) continue;
+    for (const m of OPENCODE_LISTS[type]) {
+      rows.push({
+        type,
+        slug: m.slug,
+        label: m.label,
+        effort: m.effort,
+        fast: "-",
+        current: cfg.workers?.[type]?.defaultModel === m.slug ? "yes" : "no",
+      });
+    }
+    rows.push({
+      type,
+      slug: "(flag)",
+      label: `--effort ${EFFORT_LEVELS.join("|")} → --variant <level>`,
+      effort: "per spawn",
+      fast: "-",
+      current: cfg.workers?.[type]?.defaultEffort ? `default=${cfg.workers[type].defaultEffort}` : "-",
     });
   }
 

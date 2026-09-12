@@ -63,16 +63,20 @@ Model and effort (important):
     orchestrator spawn <type> --model <base-model> --effort <level> -- <task>
   Do not append -xhigh (or another effort name) to the model yourself.
   The worker adapter translates --effort for the selected CLI:
-    devin        --model <m>                         effort is not supported
+    devin        --model <resolved-model-id>          <base>-<level> when listed
     codex        --model <m> -c model_reasoning_effort="<level>"
     cursor       --model <resolved-model-id>          usually <base>-<level>
                                                        or [effort=<level>]
     claude       --model <m> --effort <level>
     grok         --model <m> --effort <level>
-  In particular, Codex CLI has no --effort flag, and Cursor's effort suffix
-  is an underlying model ID detail; neither is part of orchestrator syntax.
-  If Cursor has no matching listed variant (for example composer-2.5), it
-  keeps the requested model ID unchanged.
+    opencode*    run -m <provider>/<model> [--variant <level>]
+  In particular, Codex CLI has no --effort flag, and the Devin/Cursor effort
+  suffixes are underlying model ID details; neither is part of orchestrator
+  syntax. If a CLI has no matching listed variant (for example swe-1-6 on
+  Devin or composer-2.5 on Cursor), it keeps the requested model ID unchanged.
+  opencode-go and zen pin the provider prefix (opencode-go/ and opencode/
+  respectively): pass a bare model id like deepseek-v4.1-flash, or a full
+  provider/model id to bypass the pin.
 
 revise options:
   --model <m>        Override model for this revision

@@ -9,7 +9,7 @@
 
 このツールを呼び出したエージェントまたはセッションが **Commander** になります。Commander は実装単位ごとにリスクを判断し、それぞれ独立した git worktree で動く Agent CLI に作業を割り振ります。完了した作業はほかの処理を待たずに順次レビューし、必要なら `revise` で修正を依頼して、1 本の統合ブランチにマージします。既定の選択方針は後述します。
 
-各 Agent CLI は直接起動します（`devin -p`、`claude -p`、`codex exec`、`cursor-agent -p`、`grok -p`）。デーモンは使用しないため、デーモンの停止によって処理が進まなくなることはありません。
+各 Agent CLI は直接起動します（`devin -p`、`claude -p`、`codex exec`、`cursor-agent -p`、`grok -p`、`opencode run`）。デーモンは使用しないため、デーモンの停止によって処理が進まなくなることはありません。
 
 ## インストール
 
@@ -34,7 +34,7 @@ cd orchestrator
 npx skills add hckaye/orchestrator --skill orchestrator --skill orchestrator-handoff --global --copy --full-depth --yes
 ```
 
-Node.js（開発時は v25 を使用）と、使用する Agent CLI（`devin`、`claude`、`codex`、`cursor-agent`、`grok`）のインストールおよび認証が必要です。
+Node.js（開発時は v25 を使用）と、使用する Agent CLI（`devin`、`claude`、`codex`、`cursor-agent`、`grok`、`opencode`）のインストールおよび認証が必要です。`opencode-go` と `zen` の worker type も `opencode` バイナリを使用します。
 
 ## 設定
 
@@ -42,11 +42,14 @@ Node.js（開発時は v25 を使用）と、使用する Agent CLI（`devin`、
 
 | worker  | CLI            | 既定のモデル       | effort                | パーミッション          |
 |---------|----------------|---------------------|-----------------------|---------------------|
-| devin   | `devin`        | `swe-2`             | 非対応                | `dangerous`（自動）  |
+| devin   | `devin`        | `swe-2`             | `max`                 | `dangerous`（自動）  |
 | codex   | `codex`        | `gpt-5.6-luna`      | `max`                 | 承認をバイパス       |
 | cursor  | `cursor-agent` | `cursor-grok-4.6-medium` | `medium`          | `--yolo`             |
 | claude  | `claude`       | `claude-opus-5`     | `high`                | `bypassPermissions` |
 | grok    | `grok`         | `grok-4.6`          | `medium`              | `always-approve`     |
+| opencode | `opencode`    | `deepseek/deepseek-v4.1-flash` | —          | `--auto`             |
+| opencode-go | `opencode` | `deepseek-v4.1-flash`（→ `opencode-go/…`）| — | `--auto`             |
+| zen     | `opencode`     | `deepseek-v4.1-flash`（→ `opencode/…`）| —  | `--auto`             |
 
 Commander の既定モデルは `claude-fable-5-1[1m]`、effort は `high` です。代わりに `gpt-6-astra` と `medium` も選択できます。統合ブランチのテンプレートは `integrate/${task}`、ベースブランチは `main` です。
 
@@ -58,7 +61,7 @@ worker ごとのモデルは `--model`、effort は `--effort` で起動時に�
 
 | 実装単位 | 既定の worker 候補 |
 |---|---|
-| 定型的な作業 | Cursor Grok 4.6 の `medium`、Grok CLI Grok 4.6 の `medium`、Devin SWE-2、最後の候補として Codex GPT-5.6 Luna の `xhigh` |
+| 定型的な作業 | Cursor Grok 4.6 の `medium`、Grok CLI Grok 4.6 の `medium`、Devin SWE-2 の `max`、OpenCode DeepSeek V4.1 Flash（`opencode` / `opencode-go` / `zen`）、最後の候補として Codex GPT-5.6 Luna の `xhigh` |
 | 影響範囲が広い、重要、または難しい作業 | Cursor Grok 4.6 の `xhigh`、Grok CLI Grok 4.6 の `xhigh`、Codex GPT-5.6 Terra の `xhigh` |
 | 間違えた場合に元に戻せない作業 | Codex GPT-6 Astra の `xhigh`、Claude Fable 5.1 の `xhigh` |
 
@@ -75,7 +78,7 @@ Cursor worker では、Grok、Composer、Fable のモデルだけを使用でき
 
 Claude Opus は原則として実装ではなくレビューに使用します。利用できる worker が Claude だけの場合に限り、実装にも使用できます。
 
-Cursor Grok 4.6 と Grok CLI Grok 4.6 は別のプロバイダーで、並列処理の枠も独立しています。そのため、同じ段階の作業に両方を割り振れます。定型的な作業では両方とも `medium`、中段では両方とも `xhigh` を使用します。Cursor Grok と Grok CLI には、orchestrator 全体の並列数制限はありません。Devin worker は、プロジェクト全体で実装用 worker を 5 個まで同時に使用できます。レビュー用途はこの制限に含みません。Devin の既定モデルは SWE-2 で、第 2 候補として GLM 5.2 を使用できます。
+Cursor Grok 4.6 と Grok CLI Grok 4.6 は別のプロバイダーで、並列処理の枠も独立しています。そのため、同じ段階の作業に両方を割り振れます。定型的な作業では両方とも `medium`、中段では両方とも `xhigh` を使用します。Cursor Grok と Grok CLI には、orchestrator 全体の並列数制限はありません。Devin worker は、orchestrator 全体（同じマシン上の他プロジェクトの worker も含む）で実装用 worker を 7 個程度まで同時に使用できます。レビュー用途はこの制限に含みません。Devin の既定モデルは SWE-2（effort `max`）で、第 2 候補として GLM 5.2 を使用できます。OpenCode は 1 つの `opencode` バイナリに 3 つの worker type があります。`opencode` は `provider/model` 形式のモデル ID をそのまま受け取り、`opencode-go` と `zen` はそれぞれ OpenCode Go（`opencode-go/…`）と OpenCode Zen（`opencode/…`）のプロバイダーに固定して、プロバイダーなしのモデル ID を受け取ります。3 つとも既定は DeepSeek V4.1 Flash（定型的な作業向け）で、第 2 候補は GLM-5.3-Flash です。
 
 Commander には Claude Fable 5.1 1M の `high` または GPT-6 Astra の `medium` を使用します。設定上の既定値は Fable/high で、Astra/medium も選択できます。`commander` の設定は参考値です。orchestrator は呼び出し元のセッションを起動したり置き換えたりしないため、利用環境が対応している場合は、セッション開始時にどちらかのモデルを選択してください。上記の 3 段階は、割り振り先の worker に適用します。Commander には適用しません。
 
@@ -91,11 +94,12 @@ orchestrator に渡すモデル名へ `-xhigh` などの effort 名を追加し�
 
 | Worker | Agent CLI に渡す形式 |
 |---|---|
-| Devin | `--model <m>`。effort は非対応 |
+| Devin | `--model <resolved-model-id>`。effort は一覧に存在する `<base>-<level>` バリエーション（例: `swe-2-max`）へ解決し、存在しない場合はモデルをそのまま使用 |
 | Codex | `--model <m> -c 'model_reasoning_effort="<level>"'`。Codex CLI に `--effort` フラグはありません |
 | Cursor | 一覧に存在する `<base>-<level>` または `[effort=<level>]` のバリエーションを使用 |
 | Claude | `--model <m> --effort <level>` |
 | Grok | `--model <m> --effort <level>`。`--effort` は `--reasoning-effort` の別名 |
+| OpenCode | `opencode run -m <provider>/<model> [--variant <level>]`。`opencode-go` / `zen` はプロバイダーなしのモデル ID に自身のプロバイダーを付与 |
 
 Codex の正しい実行例は次のとおりです。
 
@@ -122,6 +126,9 @@ orchestrator spawn cursor --model cursor-grok-4.6-medium --effort xhigh -- "impl
 orchestrator spawn claude --model claude-opus-5 --effort high -- "review a difficult architecture change; report findings only, do not edit files"
 orchestrator spawn grok   --model grok-4.6 --effort medium -- "review the integration tests and fix failures"
 orchestrator spawn grok   --model grok-4.6 --effort xhigh -- "implement a difficult architecture change"
+orchestrator spawn opencode    --model deepseek/deepseek-v4.1-flash -- "fix a routine lint failure"
+orchestrator spawn opencode-go --model deepseek-v4.1-flash -- "implement a routine isolated unit"
+orchestrator spawn zen    --model glm-5.3-flash -- "implement a routine isolated unit"
 
 orchestrator ls
 orchestrator wait <id> --timeout 120      # reconcile loop での短い待機（全 worker の一括待機より優先）
