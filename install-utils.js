@@ -6,12 +6,15 @@ const DEVIN_DEFAULT_MODEL = "swe-2";
 const DEVIN_DEFAULT_EFFORT = "high";
 const PREVIOUS_DEVIN_DEFAULT_EFFORT = "max";
 const PREVIOUS_DEVIN_DEFAULT_MODELS = new Set(["glm-5.2", "glm-5-2"]);
-const CURSOR_DEFAULT_MODEL = "cursor-grok-4.6-medium";
+const CURSOR_DEFAULT_MODEL = "grok-4.7-medium";
 const CURSOR_DEFAULT_EFFORT = "medium";
-const PREVIOUS_CURSOR_DEFAULT_MODEL = "composer-2.5";
-const GROK_DEFAULT_MODEL = "grok-4.6";
+const PREVIOUS_CURSOR_DEFAULT_MODELS = new Set([
+  "composer-2.5",
+  "cursor-grok-4.6-medium",
+]);
+const GROK_DEFAULT_MODEL = "grok-4.7";
 const GROK_DEFAULT_EFFORT = "medium";
-const PREVIOUS_GROK_DEFAULT_MODEL = "grok-4.5";
+const PREVIOUS_GROK_DEFAULT_MODELS = new Set(["grok-4.5", "grok-4.6"]);
 const OPENCODE_DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash";
 const OPENCODE_GO_DEFAULT_MODEL = "deepseek-v4.1-flash";
 const ZEN_DEFAULT_MODEL = "deepseek-v4.1-flash";
@@ -94,7 +97,7 @@ export function updateConfigDefaults(config) {
     changed = true;
   } else if (
     !config.workers.cursor.defaultModel ||
-    config.workers.cursor.defaultModel === PREVIOUS_CURSOR_DEFAULT_MODEL
+    PREVIOUS_CURSOR_DEFAULT_MODELS.has(config.workers.cursor.defaultModel)
   ) {
     config.workers.cursor.defaultModel = CURSOR_DEFAULT_MODEL;
     config.workers.cursor.defaultEffort = CURSOR_DEFAULT_EFFORT;
@@ -113,7 +116,7 @@ export function updateConfigDefaults(config) {
     changed = true;
   } else if (
     !config.workers.grok.defaultModel ||
-    config.workers.grok.defaultModel === PREVIOUS_GROK_DEFAULT_MODEL
+    PREVIOUS_GROK_DEFAULT_MODELS.has(config.workers.grok.defaultModel)
   ) {
     config.workers.grok.defaultModel = GROK_DEFAULT_MODEL;
     changed = true;

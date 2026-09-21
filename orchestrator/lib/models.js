@@ -233,7 +233,7 @@ function listGrokAgentModels(cfg) {
     });
     const rows = parseGrokListModels(out);
     return rows.length ? rows : [{
-      slug: cfg.workers?.grok?.defaultModel || "grok-4.6",
+      slug: cfg.workers?.grok?.defaultModel || "grok-4.7",
       label: "Grok",
       effort: "via --effort",
       fast: false,
@@ -246,7 +246,8 @@ function listGrokAgentModels(cfg) {
 
 function classifySlugFamily(slug) {
   if (/^composer-/i.test(slug)) return "cursor";
-  if (/^grok-/i.test(slug)) return "grok";
+  // cursor-agent lists Grok 4.7 as grok-4.7-<effort>. That slug is still a
+  // Cursor worker model. The grok worker reads `grok models` separately.
   if (/^gpt-|^o\d/i.test(slug) || /codex/i.test(slug)) return "codex";
   if (/^claude-/i.test(slug)) return "cursor";
   return "cursor";

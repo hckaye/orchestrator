@@ -88,11 +88,11 @@ test("model-selection defaults expose the approved commander choices and worker 
     effort: "high",
   });
   assert.deepEqual(pickWorkerRuntime(config, "cursor"), {
-    model: "cursor-grok-4.6-medium",
+    model: "grok-4.7-medium",
     effort: "medium",
   });
   assert.deepEqual(pickWorkerRuntime(config, "grok"), {
-    model: "grok-4.6",
+    model: "grok-4.7",
     effort: "medium",
   });
   assert.deepEqual(pickWorkerRuntime(config, "opencode"), {
@@ -130,9 +130,9 @@ test("installer upgrades previous model defaults without replacing custom choice
   assert.equal(updateConfigDefaults(legacy), true);
   assert.equal(legacy.workers.devin.defaultModel, "swe-2");
   assert.equal(legacy.workers.devin.defaultEffort, "high");
-  assert.equal(legacy.workers.cursor.defaultModel, "cursor-grok-4.6-medium");
+  assert.equal(legacy.workers.cursor.defaultModel, "grok-4.7-medium");
   assert.equal(legacy.workers.cursor.defaultEffort, "medium");
-  assert.equal(legacy.workers.grok.defaultModel, "grok-4.6");
+  assert.equal(legacy.workers.grok.defaultModel, "grok-4.7");
   assert.equal(legacy.workers.grok.defaultEffort, "medium");
   assert.equal(legacy.workers.opencode.defaultModel, "deepseek/deepseek-v4.1-flash");
   assert.equal(legacy.workers["opencode-go"].provider, "opencode-go");
@@ -141,6 +141,18 @@ test("installer upgrades previous model defaults without replacing custom choice
   assert.equal(legacy.workers.zen.defaultModel, "deepseek-v4.1-flash");
   assert.ok(legacy.permissionBridge.patterns["opencode-go"].length > 0);
   assert.equal(legacy.commander.defaultModel, "claude-fable-5-1[1m]");
+
+  const previousGrok = {
+    workers: {
+      cursor: { defaultModel: "cursor-grok-4.6-medium", defaultEffort: "medium" },
+      grok: { defaultModel: "grok-4.6", defaultEffort: "medium" },
+    },
+  };
+  assert.equal(updateConfigDefaults(previousGrok), true);
+  assert.equal(previousGrok.workers.cursor.defaultModel, "grok-4.7-medium");
+  assert.equal(previousGrok.workers.cursor.defaultEffort, "medium");
+  assert.equal(previousGrok.workers.grok.defaultModel, "grok-4.7");
+  assert.equal(previousGrok.workers.grok.defaultEffort, "medium");
 
   const legacyVariant = { workers: { devin: { defaultModel: "glm-5-2" } } };
   assert.equal(updateConfigDefaults(legacyVariant), true);
@@ -269,7 +281,15 @@ test("opencode workers prefix bare models with the pinned provider and map effor
   );
 });
 
-test("Grok 4.6 defaults select the requested tier and explicit older models remain allowed", () => {
+test("Grok 4.7 defaults select the requested tier and explicit older models remain allowed", () => {
+  assert.equal(
+    applyCursorModelEffort(
+      "grok-4.7-medium",
+      "xhigh",
+      ["grok-4.7-medium", "grok-4.7-xhigh"]
+    ),
+    "grok-4.7-xhigh"
+  );
   assert.equal(
     applyCursorModelEffort(
       "cursor-grok-4.6-medium",
@@ -280,8 +300,12 @@ test("Grok 4.6 defaults select the requested tier and explicit older models rema
   );
 
   const config = {
-    workers: { grok: { defaultModel: "grok-4.6", defaultEffort: "medium" } },
+    workers: { grok: { defaultModel: "grok-4.7", defaultEffort: "medium" } },
   };
+  assert.deepEqual(pickWorkerRuntime(config, "grok", { model: "grok-4.6" }), {
+    model: "grok-4.6",
+    effort: "medium",
+  });
   assert.deepEqual(pickWorkerRuntime(config, "grok", { model: "grok-4.5" }), {
     model: "grok-4.5",
     effort: "medium",

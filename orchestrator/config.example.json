@@ -22,7 +22,7 @@
     },
     "cursor": {
       "cli": "cursor-agent",
-      "defaultModel": "cursor-grok-4.6-medium",
+      "defaultModel": "grok-4.7-medium",
       "defaultEffort": "medium",
       "yolo": true,
       "trust": true,
@@ -39,7 +39,7 @@
     },
     "grok": {
       "cli": "grok",
-      "defaultModel": "grok-4.6",
+      "defaultModel": "grok-4.7",
       "defaultEffort": "medium",
       "permissionMode": "default",
       "alwaysApprove": true,

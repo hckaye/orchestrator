@@ -17,9 +17,9 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
 2. Read config: `orchestrator config show`. Defaults:
    - devin → model `swe-2`, effort `high` (spawned as `swe-2-high`); `glm-5.2` is the second option
    - codex → model `gpt-5.6-luna`, effort `max`
-   - cursor → model `cursor-grok-4.6-medium`, effort `medium`
+   - cursor → model `grok-4.7-medium`, effort `medium`
    - claude → model `claude-opus-5`, effort `high`
-   - grok → model `grok-4.6`, effort `medium`
+   - grok → model `grok-4.7`, effort `medium`
    - opencode → model `deepseek/deepseek-v4.1-flash` (any configured provider); `zhipuai/glm-5.3-flash` is the second option
    - opencode-go → `opencode` CLI pinned to OpenCode Go, model `deepseek-v4.1-flash` (bare id; becomes `opencode-go/deepseek-v4.1-flash`); `glm-5.3-flash` is the second option
    - zen → `opencode` CLI pinned to OpenCode Zen, model `deepseek-v4.1-flash` (becomes `opencode/deepseek-v4.1-flash`); `glm-5.3-flash` is the second option
@@ -34,9 +34,9 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
 | Commander | Invoking agent/session | Fable 5.1 1M / GPT-6 Astra | high / medium |
 | Worker: devin | `devin -p` | SWE-2 | high |
 | Worker: codex | `codex exec` | GPT-5.6 Luna | max |
-| Worker: cursor | `cursor-agent -p` | Cursor Grok 4.6 | medium |
+| Worker: cursor | `cursor-agent -p` | Cursor Grok 4.7 | medium |
 | Worker: claude | `claude -p` | Opus 5.0 | high |
-| Worker: grok | `grok -p` | Grok 4.6 | medium |
+| Worker: grok | `grok -p` | Grok 4.7 | medium |
 | Worker: opencode | `opencode run` | DeepSeek V4.1 Flash | - |
 | Worker: opencode-go | `opencode run` (Go provider) | DeepSeek V4.1 Flash | - |
 | Worker: zen | `opencode run` (Zen provider) | DeepSeek V4.1 Flash | - |
@@ -49,8 +49,8 @@ Before dispatch, classify each implementation unit and use a suitable available 
 
 | Unit | Worker choices |
 |---|---|
-| Routine | Cursor Composer 2.5; Devin SWE-2 at `high`; Grok CLI Grok 4.6 at `low`; OpenCode DeepSeek V4.1 Flash (`opencode` / `opencode-go` / `zen`); Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
-| Wide-impact, important, or difficult | Cursor Grok 4.6 at `xhigh`; Grok CLI Grok 4.6 at `xhigh`; Codex GPT-5.6 Terra at `xhigh` |
+| Routine | Cursor Composer 2.5; Devin SWE-2 at `high`; Grok CLI Grok 4.7 at `low`; OpenCode DeepSeek V4.1 Flash (`opencode` / `opencode-go` / `zen`); Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
+| Wide-impact, important, or difficult | Cursor Grok 4.7 at `xhigh`; Grok CLI Grok 4.7 at `xhigh`; Codex GPT-5.6 Terra at `xhigh` |
 | Irreversible if wrong | Codex GPT-6 Astra at `xhigh`; Claude Fable 5.1 at `xhigh` |
 
 Use the irreversible tier only when an incorrect result cannot be recovered normally: frozen formats, ABI schemas, generated-contract changes, core soundness, or public ABI changes. A unit that is merely difficult belongs in the middle tier.
@@ -66,7 +66,7 @@ Cursor workers may use only Grok, Composer, or Fable model families. Do not sele
 
 Use Claude Opus primarily as a reviewer, not as an implementation worker. It may implement only when Claude is the only usable worker provider.
 
-Cursor Grok 4.6 means Grok through `cursor-agent`; Grok CLI Grok 4.6 means the official `grok` CLI. They are separate providers with independent capacity and may run concurrently. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin workers share a maximum of about seven concurrent implementation workers across the entire orchestrator; that count includes Devin workers spawned for other projects on this machine, while reviewer use is unlimited. Devin runs SWE-2 at `high` effort by default, with GLM 5.2 (`--model glm-5.2`) as the second option.
+Cursor Grok 4.7 means Grok through `cursor-agent`; Grok CLI Grok 4.7 means the official `grok` CLI. They are separate providers with independent capacity and may run concurrently. Both use `medium` in the routine tier and `xhigh` in the middle tier. Cursor Grok and Grok CLI have no orchestrator-wide parallel limit. Devin workers share a maximum of five concurrent implementation workers across the entire orchestrator; that count includes Devin workers spawned for other projects on this machine, while reviewer use is unlimited. Devin runs SWE-2 at `high` effort by default, with GLM 5.2 (`--model glm-5.2`) as the second option.
 
 OpenCode is three worker types over one binary: `opencode` takes a full `provider/model` id, while `opencode-go` and `zen` pin the OpenCode Go (`opencode-go/`) and OpenCode Zen (`opencode/`) providers and take a bare model id. They share the `opencode` CLI's own parallelism; treat them as one provider for capacity purposes. All three default to DeepSeek V4.1 Flash (routine tier), with GLM-5.3-Flash as the second option.
 
@@ -334,7 +334,7 @@ The worker resumes on its existing CLI session in the same worktree, applies you
 Revise guidance:
 - Be specific and actionable: cite file paths, line numbers, and what to change. The worker has its prior context but not your reasoning — say exactly what's wrong and what the desired state is.
 - One concern per revise is fine; batch multiple concerns into one revise when related.
-- If the same findings recur or revisions stop making progress, switch providers with `orchestrator-handoff` instead of revising indefinitely. For routine work, switch Devin/SWE-2 to Cursor Grok 4.6 or Grok CLI Grok 4.6 at `medium`, and switch either Grok route to Devin/SWE-2. For difficult work, switch among either Grok 4.6 route at `xhigh` and Codex. Use Claude Opus for implementation only when Claude is the only usable worker provider. Only move to GPT-6 Astra or Fable 5.1 at `xhigh` when the unit meets the irreversible-tier definition. If the remaining work is mechanical implementation of an already-accepted design, stay on a lower tier. If the remaining work is performance-sensitive code, keep it on this tier. Include all prior review findings and diffs in the handoff brief, then restart the review cycle.
+- If the same findings recur or revisions stop making progress, switch providers with `orchestrator-handoff` instead of revising indefinitely. For routine work, switch Devin/SWE-2 to Cursor Grok 4.7 or Grok CLI Grok 4.7 at `medium`, and switch either Grok route to Devin/SWE-2. For difficult work, switch among either Grok 4.7 route at `xhigh` and Codex. Use Claude Opus for implementation only when Claude is the only usable worker provider. Only move to GPT-6 Astra or Fable 5.1 at `xhigh` when the unit meets the irreversible-tier definition. If the remaining work is mechanical implementation of an already-accepted design, stay on a lower tier. If the remaining work is performance-sensitive code, keep it on this tier. Include all prior review findings and diffs in the handoff brief, then restart the review cycle.
 - `--model` and `--interactive` can be overridden per revise.
 - If `orchestrator status <id>` shows no `sessionId`, resume is impossible (the CLI didn't emit a parseable session ID). Fall back to archive + re-spawn.
 
@@ -445,11 +445,11 @@ orchestrator spawn codex --model gpt-6-astra --effort xhigh -- "implement an irr
 orchestrator spawn claude --model claude-fable-5-1[1m] --effort xhigh -- "write an ADR for a new shared cache module; design the public API; DO NOT implement"
 orchestrator spawn claude --model claude-fable-5-1[1m] --effort xhigh -- "review the ADR for the shared cache module; report findings only, do not implement"
 orchestrator spawn codex --model gpt-6-astra --effort xhigh -- "implement the hot-path lookup in the shared cache; the performance of this code matters"
-orchestrator spawn cursor --model cursor-grok-4.6-medium --effort medium -- "build OrdersForm React component in src/ui/OrdersForm.tsx"
-orchestrator spawn cursor --model cursor-grok-4.6-medium --effort xhigh -- "implement a difficult architecture change"
+orchestrator spawn cursor --model grok-4.7-medium --effort medium -- "build OrdersForm React component in src/ui/OrdersForm.tsx"
+orchestrator spawn cursor --model grok-4.7-medium --effort xhigh -- "implement a difficult architecture change"
 orchestrator spawn claude --model claude-opus-5 --effort high -- "review a difficult architecture change; report findings only, do not edit files"
-orchestrator spawn grok --model grok-4.6 --effort medium -- "review the integration tests and fix failures"
-orchestrator spawn grok --model grok-4.6 --effort xhigh -- "implement a difficult architecture change"
+orchestrator spawn grok --model grok-4.7 --effort medium -- "review the integration tests and fix failures"
+orchestrator spawn grok --model grok-4.7 --effort xhigh -- "implement a difficult architecture change"
 orchestrator spawn opencode --model deepseek/deepseek-v4.1-flash -- "fix a routine lint failure"
 orchestrator spawn opencode-go --model deepseek-v4.1-flash -- "implement a routine isolated unit"
 orchestrator spawn zen --model glm-5.3-flash -- "implement a routine isolated unit"
