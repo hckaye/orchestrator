@@ -43,9 +43,9 @@ Node.js（開発時は v25 を使用）と、使用する Agent CLI（`devin`、
 | worker  | CLI            | 既定のモデル       | effort                | パーミッション          |
 |---------|----------------|---------------------|-----------------------|---------------------|
 | devin   | `devin`        | `swe-2`             | `high`                | `dangerous`（自動）  |
-| codex   | `codex`        | `gpt-5.6-luna`      | `max`                 | 承認をバイパス       |
+| codex   | `codex`        | `gpt-6.0-luna`      | `max`                 | 承認をバイパス       |
 | cursor  | `cursor-agent` | `grok-4.7-medium` | `medium`          | `--yolo`             |
-| claude  | `claude`       | `claude-opus-5`     | `high`                | `bypassPermissions` |
+| claude  | `claude`       | `claude-opus-5-5`   | `high`                | `bypassPermissions` |
 | grok    | `grok`         | `grok-4.7`          | `medium`              | `always-approve`     |
 | opencode | `opencode`    | `deepseek/deepseek-v4.1-flash` | —          | `--auto`             |
 | opencode-go | `opencode` | `deepseek-v4.1-flash`（→ `opencode-go/…`）| — | `--auto`             |
@@ -61,8 +61,8 @@ worker ごとのモデルは `--model`、effort は `--effort` で起動時に�
 
 | 実装単位 | 既定の worker 候補 |
 |---|---|
-| 定型的な作業 | Cursor Grok 4.7 の `medium`、Grok CLI Grok 4.7 の `medium`、Devin SWE-2 の `high`、OpenCode DeepSeek V4.1 Flash（`opencode` / `opencode-go` / `zen`）、最後の候補として Codex GPT-5.6 Luna の `xhigh` |
-| 影響範囲が広い、重要、または難しい作業 | Cursor Grok 4.7 の `xhigh`、Grok CLI Grok 4.7 の `xhigh`、Codex GPT-5.6 Terra の `xhigh` |
+| 定型的な作業 | Cursor Grok 4.7 の `medium`、Grok CLI Grok 4.7 の `medium`、Devin SWE-2 の `high`、OpenCode DeepSeek V4.1 Flash（`opencode` / `opencode-go` / `zen`）、最後の候補として Codex GPT-6.0 Luna の `xhigh` |
+| 影響範囲が広い、重要、または難しい作業 | Cursor Grok 4.7 の `xhigh`、Grok CLI Grok 4.7 の `xhigh`、Codex GPT-6.0 Sol の `medium` |
 | 間違えた場合に元に戻せない作業 | Codex GPT-6 Astra の `xhigh`、Claude Fable 5.1 の `xhigh` |
 
 元に戻せない作業向けのモデルは、固定済みのフォーマット、ABI スキーマ、生成される契約の変更、健全性の中核、公開 ABI の変更など、通常の方法では失敗から復旧できない場合だけに使用します。単に難しいだけの作業には、中段のモデルを使用します。
@@ -72,7 +72,7 @@ worker ごとのモデルは `--model`、effort は `--effort` で起動時に�
 - 設計が固まれば、あとは機械的に実装が決まるものは、この段階では設計とレビューだけを行い、実装は下の段階の worker に割り振ります。
 - どの層にあるかではなく、コード自体の性能が重要になるところ（ホットパスのアルゴリズム、アロケーション、内側のループなど）は、実装もこの段階で行います。
 
-同名モデルに複数のバージョンがある場合は、原則として数値上もっとも新しいバージョンを使用します。モデル名が異なるものには置き換えません。たとえば Opus 4.8 と Opus 5 が利用できる場合は Opus 5 を使用しますが、GPT-5.6 Luna を GPT-5.6 Sol や GPT-6 Astra に、Claude Opus 5 を Claude Fable 5.1 に置き換えることはできません。
+同名モデルに複数のバージョンがある場合は、原則として数値上もっとも新しいバージョンを使用します。モデル名が異なるものには置き換えません。たとえば Opus 4.8 と Opus 5.5 が利用できる場合は Opus 5.5 を使用しますが、GPT-6.0 Luna を GPT-6.0 Sol や GPT-6 Astra に、Claude Opus 5.5 を Claude Fable 5.1 に置き換えることはできません。
 
 Cursor worker では、Grok、Composer、Fable のモデルだけを使用できます。`cursor-agent --list-models` にほかのモデルが表示されても選択しないでください。
 
@@ -106,10 +106,10 @@ orchestrator に渡すモデル名へ `-xhigh` などの effort 名を追加し�
 Codex の正しい実行例は次のとおりです。
 
 ```bash
-orchestrator spawn codex --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
+orchestrator spawn codex --model gpt-6.0-luna --effort max -- "implement an important cross-cutting change"
 ```
 
-このコマンドは、`gpt-5.6-luna` と `model_reasoning_effort="max"` を別々に Codex へ渡します。`gpt-5.6-luna-max` というモデル名は渡しません。
+このコマンドは、`gpt-6.0-luna` と `model_reasoning_effort="max"` を別々に Codex へ渡します。`gpt-6.0-luna-max` というモデル名は渡しません。
 
 ## Commander からの使い方
 
@@ -118,14 +118,14 @@ orchestrator spawn codex --model gpt-5.6-luna --effort max -- "implement an impo
 ```bash
 orchestrator spawn devin  --model swe-2 -- "implement /api/orders in src/api/orders.ts"
 orchestrator spawn devin  --model glm-5.2 -- "implement a routine isolated unit"
-orchestrator spawn codex  --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
+orchestrator spawn codex  --model gpt-6.0-luna --effort max -- "implement an important cross-cutting change"
 orchestrator spawn codex  --model gpt-6-astra --effort xhigh -- "implement an irreversible ABI or schema change"
 orchestrator spawn claude --model claude-fable-5-1[1m] --effort xhigh -- "write an ADR for a new shared cache module; design the public API; DO NOT implement"
 orchestrator spawn claude --model claude-fable-5-1[1m] --effort xhigh -- "review the ADR for the shared cache module; report findings only, do not implement"
 orchestrator spawn codex  --model gpt-6-astra --effort xhigh -- "implement the hot-path lookup in the shared cache; the performance of this code matters"
 orchestrator spawn cursor --model grok-4.7-medium --effort medium -- "build OrdersForm in src/ui/OrdersForm.tsx"
 orchestrator spawn cursor --model grok-4.7-medium --effort xhigh -- "implement a difficult architecture change"
-orchestrator spawn claude --model claude-opus-5 --effort high -- "review a difficult architecture change; report findings only, do not edit files"
+orchestrator spawn claude --model claude-opus-5-5 --effort high -- "review a difficult architecture change; report findings only, do not edit files"
 orchestrator spawn grok   --model grok-4.7 --effort medium -- "review the integration tests and fix failures"
 orchestrator spawn grok   --model grok-4.7 --effort xhigh -- "implement a difficult architecture change"
 orchestrator spawn opencode    --model deepseek/deepseek-v4.1-flash -- "fix a routine lint failure"

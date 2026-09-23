@@ -80,11 +80,11 @@ test("model-selection defaults expose the approved commander choices and worker 
     effort: "high",
   });
   assert.deepEqual(pickWorkerRuntime(config, "codex"), {
-    model: "gpt-5.6-luna",
+    model: "gpt-6.0-luna",
     effort: "max",
   });
   assert.deepEqual(pickWorkerRuntime(config, "claude"), {
-    model: "claude-opus-5",
+    model: "claude-opus-5-5",
     effort: "high",
   });
   assert.deepEqual(pickWorkerRuntime(config, "cursor"), {
@@ -121,6 +121,8 @@ test("installer upgrades previous model defaults without replacing custom choice
   const legacy = {
     workers: {
       devin: { defaultModel: "glm-5.2" },
+      codex: { defaultModel: "gpt-5.6-terra" },
+      claude: { defaultModel: "claude-opus-5" },
       cursor: { defaultModel: "composer-2.5" },
       grok: { defaultModel: "grok-4.5" },
     },
@@ -130,6 +132,8 @@ test("installer upgrades previous model defaults without replacing custom choice
   assert.equal(updateConfigDefaults(legacy), true);
   assert.equal(legacy.workers.devin.defaultModel, "swe-2");
   assert.equal(legacy.workers.devin.defaultEffort, "high");
+  assert.equal(legacy.workers.codex.defaultModel, "gpt-6.0-luna");
+  assert.equal(legacy.workers.claude.defaultModel, "claude-opus-5-5");
   assert.equal(legacy.workers.cursor.defaultModel, "grok-4.7-medium");
   assert.equal(legacy.workers.cursor.defaultEffort, "medium");
   assert.equal(legacy.workers.grok.defaultModel, "grok-4.7");
@@ -167,13 +171,15 @@ test("installer upgrades previous model defaults without replacing custom choice
   const custom = {
     workers: {
       devin: { defaultModel: "opus", defaultEffort: "high" },
+      codex: { defaultModel: "gpt-6.0-sol" },
+      claude: { defaultModel: "claude-haiku-4-5" },
       cursor: { defaultModel: "cursor-custom", defaultEffort: "high" },
       grok: { defaultModel: "grok-custom", defaultEffort: "high" },
       opencode: { defaultModel: "custom/custom-model" },
       "opencode-go": { defaultModel: "custom-go-model" },
       zen: { defaultModel: "custom-zen-model" },
     },
-    commander: { defaultModel: "gpt-5.6-sol" },
+    commander: { defaultModel: "gpt-6.0-sol" },
     permissionBridge: {
       patterns: { grok: [], opencode: [], "opencode-go": [], zen: [] },
     },
@@ -181,6 +187,8 @@ test("installer upgrades previous model defaults without replacing custom choice
   assert.equal(updateConfigDefaults(custom), false);
   assert.equal(custom.workers.devin.defaultModel, "opus");
   assert.equal(custom.workers.devin.defaultEffort, "high");
+  assert.equal(custom.workers.codex.defaultModel, "gpt-6.0-sol");
+  assert.equal(custom.workers.claude.defaultModel, "claude-haiku-4-5");
   assert.equal(custom.workers.cursor.defaultModel, "cursor-custom");
   assert.equal(custom.workers.cursor.defaultEffort, "high");
   assert.equal(custom.workers.grok.defaultModel, "grok-custom");
@@ -188,7 +196,7 @@ test("installer upgrades previous model defaults without replacing custom choice
   assert.equal(custom.workers.opencode.defaultModel, "custom/custom-model");
   assert.equal(custom.workers["opencode-go"].defaultModel, "custom-go-model");
   assert.equal(custom.workers.zen.defaultModel, "custom-zen-model");
-  assert.equal(custom.commander.defaultModel, "gpt-5.6-sol");
+  assert.equal(custom.commander.defaultModel, "gpt-6.0-sol");
 });
 
 test("worker prompts and environment prohibit nested worker dispatch", () => {

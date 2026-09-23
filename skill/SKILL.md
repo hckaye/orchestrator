@@ -16,9 +16,9 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
 1. Confirm `orchestrator` is on PATH. If not, it lives at `~/.orchestrator/orchestrator.js`; run `node ~/.orchestrator/orchestrator.js`.
 2. Read config: `orchestrator config show`. Defaults:
    - devin → model `swe-2`, effort `high` (spawned as `swe-2-high`); `glm-5.2` is the second option
-   - codex → model `gpt-5.6-luna`, effort `max`
+   - codex → model `gpt-6.0-luna`, effort `max`
    - cursor → model `grok-4.7-medium`, effort `medium`
-   - claude → model `claude-opus-5`, effort `high`
+   - claude → model `claude-opus-5-5`, effort `high`
    - grok → model `grok-4.7`, effort `medium`
    - opencode → model `deepseek/deepseek-v4.1-flash` (any configured provider); `zhipuai/glm-5.3-flash` is the second option
    - opencode-go → `opencode` CLI pinned to OpenCode Go, model `deepseek-v4.1-flash` (bare id; becomes `opencode-go/deepseek-v4.1-flash`); `glm-5.3-flash` is the second option
@@ -33,9 +33,9 @@ A standalone daemon-less tool at `~/.orchestrator/` (fronted by the `orchestrato
 |---|---|---|---|
 | Commander | Invoking agent/session | Fable 5.1 1M / GPT-6 Astra | high / medium |
 | Worker: devin | `devin -p` | SWE-2 | high |
-| Worker: codex | `codex exec` | GPT-5.6 Luna | max |
+| Worker: codex | `codex exec` | GPT-6.0 Luna | max |
 | Worker: cursor | `cursor-agent -p` | Cursor Grok 4.7 | medium |
-| Worker: claude | `claude -p` | Opus 5.0 | high |
+| Worker: claude | `claude -p` | Opus 5.5 | high |
 | Worker: grok | `grok -p` | Grok 4.7 | medium |
 | Worker: opencode | `opencode run` | DeepSeek V4.1 Flash | - |
 | Worker: opencode-go | `opencode run` (Go provider) | DeepSeek V4.1 Flash | - |
@@ -49,8 +49,8 @@ Before dispatch, classify each implementation unit and use a suitable available 
 
 | Unit | Worker choices |
 |---|---|
-| Routine | Cursor Composer 2.5; Devin SWE-2 at `high`; Grok CLI Grok 4.7 at `low`; OpenCode DeepSeek V4.1 Flash (`opencode` / `opencode-go` / `zen`); Codex GPT-5.6 Luna at `xhigh` as the lowest-priority choice |
-| Wide-impact, important, or difficult | Cursor Grok 4.7 at `xhigh`; Grok CLI Grok 4.7 at `xhigh`; Codex GPT-5.6 Terra at `xhigh` |
+| Routine | Cursor Composer 2.5; Devin SWE-2 at `high`; Grok CLI Grok 4.7 at `low`; OpenCode DeepSeek V4.1 Flash (`opencode` / `opencode-go` / `zen`); Codex GPT-6.0 Luna at `xhigh` as the lowest-priority choice |
+| Wide-impact, important, or difficult | Cursor Grok 4.7 at `xhigh`; Grok CLI Grok 4.7 at `xhigh`; Codex GPT-6.0 Sol at `medium` |
 | Irreversible if wrong | Codex GPT-6 Astra at `xhigh`; Claude Fable 5.1 at `xhigh` |
 
 Use the irreversible tier only when an incorrect result cannot be recovered normally: frozen formats, ABI schemas, generated-contract changes, core soundness, or public ABI changes. A unit that is merely difficult belongs in the middle tier.
@@ -60,7 +60,7 @@ Also use this tier for new general-purpose modules, libraries the rest of the co
 - If a settled design determines the implementation mechanically, this tier does design and review only. Dispatch implementation to a lower tier.
 - If the performance of the code itself matters (inner loops, allocations, hot-path algorithms), keep implementation on this tier. Do not choose this tier just because the work sits in a given architectural layer.
 
-When multiple versions of the same named model are available, use the numerically newest version by default. The model name is a strict boundary: choose Opus 5 over Opus 4.8, but do not replace GPT-5.6 Luna with GPT-5.6 Sol or GPT-6 Astra, or Claude Opus 5 with Claude Fable 5.1.
+When multiple versions of the same named model are available, use the numerically newest version by default. The model name is a strict boundary: choose Opus 5.5 over Opus 4.8, but do not replace GPT-6.0 Luna with GPT-6.0 Sol or GPT-6 Astra, or Claude Opus 5.5 with Claude Fable 5.1.
 
 Cursor workers may use only Grok, Composer, or Fable model families. Do not select any other model family for Cursor, even if `cursor-agent --list-models` lists it.
 
@@ -96,10 +96,10 @@ The actual translation is different for each CLI:
 For example, this is the correct Codex invocation through orchestrator:
 
 ```bash
-orchestrator spawn codex --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
+orchestrator spawn codex --model gpt-6.0-luna --effort max -- "implement an important cross-cutting change"
 ```
 
-It means `gpt-5.6-luna` plus `model_reasoning_effort="max"`; it does not mean a model named `gpt-5.6-luna-max` is passed to Codex CLI. Use `orchestrator models [type]` to inspect model IDs available from the installed CLIs.
+It means `gpt-6.0-luna` plus `model_reasoning_effort="max"`; it does not mean a model named `gpt-6.0-luna-max` is passed to Codex CLI. Use `orchestrator models [type]` to inspect model IDs available from the installed CLIs.
 
 ## Permission bridge (hybrid)
 
@@ -440,14 +440,14 @@ orchestrator archive --older-than 1d --dry-run  # preview leftovers only
 ```bash
 orchestrator spawn devin --model swe-2 -- "implement /api/orders endpoint in src/api/orders.ts"
 orchestrator spawn devin --model glm-5.2 -- "implement a routine isolated unit"
-orchestrator spawn codex --model gpt-5.6-luna --effort max -- "implement an important cross-cutting change"
+orchestrator spawn codex --model gpt-6.0-luna --effort max -- "implement an important cross-cutting change"
 orchestrator spawn codex --model gpt-6-astra --effort xhigh -- "implement an irreversible ABI or schema change"
 orchestrator spawn claude --model claude-fable-5-1[1m] --effort xhigh -- "write an ADR for a new shared cache module; design the public API; DO NOT implement"
 orchestrator spawn claude --model claude-fable-5-1[1m] --effort xhigh -- "review the ADR for the shared cache module; report findings only, do not implement"
 orchestrator spawn codex --model gpt-6-astra --effort xhigh -- "implement the hot-path lookup in the shared cache; the performance of this code matters"
 orchestrator spawn cursor --model grok-4.7-medium --effort medium -- "build OrdersForm React component in src/ui/OrdersForm.tsx"
 orchestrator spawn cursor --model grok-4.7-medium --effort xhigh -- "implement a difficult architecture change"
-orchestrator spawn claude --model claude-opus-5 --effort high -- "review a difficult architecture change; report findings only, do not edit files"
+orchestrator spawn claude --model claude-opus-5-5 --effort high -- "review a difficult architecture change; report findings only, do not edit files"
 orchestrator spawn grok --model grok-4.7 --effort medium -- "review the integration tests and fix failures"
 orchestrator spawn grok --model grok-4.7 --effort xhigh -- "implement a difficult architecture change"
 orchestrator spawn opencode --model deepseek/deepseek-v4.1-flash -- "fix a routine lint failure"

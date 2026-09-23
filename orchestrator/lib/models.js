@@ -257,7 +257,7 @@ const CLAUDE_MODELS = [
   { slug: "fable", label: "Fable (latest alias)", effort: "via --effort" },
   { slug: "claude-fable-5-1[1m]", label: "Fable 5.1 1M", effort: "via --effort" },
   { slug: "opus", label: "Opus (latest alias)", effort: "via --effort" },
-  { slug: "claude-opus-5", label: "Opus 5.0", effort: "via --effort" },
+  { slug: "claude-opus-5-5", label: "Opus 5.5", effort: "via --effort" },
   { slug: "claude-opus-4-8[1m]", label: "Opus 4.8 1M", effort: "via --effort" },
   { slug: "sonnet", label: "Sonnet (latest alias)", effort: "via --effort" },
   { slug: "claude-sonnet-5[1m]", label: "Sonnet 5 1M", effort: "via --effort" },
@@ -274,9 +274,8 @@ const DEVIN_MODELS = [
 ];
 
 const CODEX_MODELS = [
-  { slug: "gpt-5.6-luna", label: "GPT-5.6 Luna", effort: "via --effort" },
-  { slug: "gpt-5.6-terra", label: "GPT-5.6 Terra", effort: "via --effort" },
-  { slug: "gpt-5.6-sol", label: "GPT-5.6 Sol", effort: "via --effort" },
+  { slug: "gpt-6.0-luna", label: "GPT-6.0 Luna", effort: "via --effort" },
+  { slug: "gpt-6.0-sol", label: "GPT-6.0 Sol", effort: "via --effort" },
   { slug: "gpt-6-astra", label: "GPT-6 Astra", effort: "via --effort" },
 ];
 

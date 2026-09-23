@@ -6,6 +6,16 @@ const DEVIN_DEFAULT_MODEL = "swe-2";
 const DEVIN_DEFAULT_EFFORT = "high";
 const PREVIOUS_DEVIN_DEFAULT_EFFORT = "max";
 const PREVIOUS_DEVIN_DEFAULT_MODELS = new Set(["glm-5.2", "glm-5-2"]);
+const CODEX_DEFAULT_MODEL = "gpt-6.0-luna";
+const CODEX_DEFAULT_EFFORT = "max";
+const PREVIOUS_CODEX_DEFAULT_MODELS = new Set([
+  "gpt-5.6-luna",
+  "gpt-5.6-terra",
+  "gpt-5.6-sol",
+]);
+const CLAUDE_DEFAULT_MODEL = "claude-opus-5-5";
+const CLAUDE_DEFAULT_EFFORT = "high";
+const PREVIOUS_CLAUDE_DEFAULT_MODELS = new Set(["claude-opus-5"]);
 const CURSOR_DEFAULT_MODEL = "grok-4.7-medium";
 const CURSOR_DEFAULT_EFFORT = "medium";
 const PREVIOUS_CURSOR_DEFAULT_MODELS = new Set([
@@ -84,6 +94,24 @@ export function updateConfigDefaults(config) {
     config.workers.devin.defaultEffort = DEVIN_DEFAULT_EFFORT;
     changed = true;
   }
+  if (!config.workers.codex) {
+    config.workers.codex = {
+      cli: "codex",
+      defaultModel: CODEX_DEFAULT_MODEL,
+      defaultEffort: CODEX_DEFAULT_EFFORT,
+      sandbox: "workspace-write",
+      bypassApprovals: true,
+      printMode: true,
+      extraArgs: [],
+    };
+    changed = true;
+  } else if (
+    !config.workers.codex.defaultModel ||
+    PREVIOUS_CODEX_DEFAULT_MODELS.has(config.workers.codex.defaultModel)
+  ) {
+    config.workers.codex.defaultModel = CODEX_DEFAULT_MODEL;
+    changed = true;
+  }
   if (!config.workers.cursor) {
     config.workers.cursor = {
       cli: "cursor-agent",
@@ -101,6 +129,23 @@ export function updateConfigDefaults(config) {
   ) {
     config.workers.cursor.defaultModel = CURSOR_DEFAULT_MODEL;
     config.workers.cursor.defaultEffort = CURSOR_DEFAULT_EFFORT;
+    changed = true;
+  }
+  if (!config.workers.claude) {
+    config.workers.claude = {
+      cli: "claude",
+      defaultModel: CLAUDE_DEFAULT_MODEL,
+      defaultEffort: CLAUDE_DEFAULT_EFFORT,
+      permissionMode: "bypassPermissions",
+      printMode: true,
+      extraArgs: [],
+    };
+    changed = true;
+  } else if (
+    !config.workers.claude.defaultModel ||
+    PREVIOUS_CLAUDE_DEFAULT_MODELS.has(config.workers.claude.defaultModel)
+  ) {
+    config.workers.claude.defaultModel = CLAUDE_DEFAULT_MODEL;
     changed = true;
   }
   if (!config.workers.grok) {

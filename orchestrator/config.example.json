@@ -13,7 +13,7 @@
     },
     "codex": {
       "cli": "codex",
-      "defaultModel": "gpt-5.6-luna",
+      "defaultModel": "gpt-6.0-luna",
       "defaultEffort": "max",
       "sandbox": "workspace-write",
       "bypassApprovals": true,
@@ -31,7 +31,7 @@
     },
     "claude": {
       "cli": "claude",
-      "defaultModel": "claude-opus-5",
+      "defaultModel": "claude-opus-5-5",
       "defaultEffort": "high",
       "permissionMode": "bypassPermissions",
       "printMode": true,
